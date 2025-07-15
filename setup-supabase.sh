@@ -1,0 +1,23 @@
+#!/bin/bash
+
+echo "🗄️  Setting up Supabase database for Research Coordinator App..."
+
+echo "⚠️  IMPORTANT: Please run the following steps manually:"
+echo ""
+echo "1. Go to https://app.supabase.com/projects"
+echo "2. Open your project (ID: ipaquntaeftocyvxoawo)"
+echo "3. Click 'SQL Editor' in the left sidebar"
+echo "4. Copy and paste the contents of 'database_schema_simple.sql' into the editor"
+echo "5. Click 'Run' to execute the schema"
+echo ""
+echo "The simplified schema will:"
+echo "  ✅ Create all required tables with correct structure"
+echo "  ✅ Add indexes for better performance"
+echo "  ✅ Set up update triggers"
+echo "  ✅ Disable RLS temporarily for easier testing"
+echo "  ✅ Grant proper permissions"
+echo ""
+echo "After running the schema, test the setup with:"
+echo "  ./verify-setup.sh"
+echo ""
+echo "📁 Schema file location: database_schema_simple.sql"
