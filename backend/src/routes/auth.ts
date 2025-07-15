@@ -65,6 +65,7 @@ router.post('/register', async (req, res) => {
 // Login
 router.post('/login', async (req, res) => {
   try {
+    console.log('SUPABASE AUTH ROUTE: Login request received');
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -83,13 +84,15 @@ router.post('/login', async (req, res) => {
       .single();
 
     if (error || !user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      console.log('User not found or database error');
+      return res.status(401).json({ error: 'Username or password not recognized' });
     }
 
     // Verify password
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      console.log('Password is invalid');
+      return res.status(401).json({ error: 'Username or password not recognized' });
     }
 
     // Generate JWT token
