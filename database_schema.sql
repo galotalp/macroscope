@@ -41,8 +41,24 @@ CREATE TABLE IF NOT EXISTS projects (
     group_id UUID REFERENCES groups(id) ON DELETE CASCADE,
     created_by UUID REFERENCES users(id) ON DELETE CASCADE,
     status VARCHAR(20) DEFAULT 'planning' CHECK (status IN ('planning', 'in_progress', 'completed', 'on_hold')),
+    priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+    notes TEXT,
+    file_folder_path VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create project_files table for file uploads
+CREATE TABLE IF NOT EXISTS project_files (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+    filename VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    file_size BIGINT NOT NULL,
+    mime_type VARCHAR(100),
+    uploaded_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    file_path VARCHAR(500) NOT NULL
 );
 
 -- Create project_assignments table
@@ -77,6 +93,8 @@ CREATE INDEX IF NOT EXISTS idx_projects_created_by ON projects(created_by);
 CREATE INDEX IF NOT EXISTS idx_project_assignments_project_id ON project_assignments(project_id);
 CREATE INDEX IF NOT EXISTS idx_project_assignments_user_id ON project_assignments(user_id);
 CREATE INDEX IF NOT EXISTS idx_checklist_items_project_id ON checklist_items(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_files_project_id ON project_files(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_files_uploaded_by ON project_files(uploaded_by);
 
 -- Enable Row Level Security (RLS)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -85,6 +103,7 @@ ALTER TABLE group_memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE checklist_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_files ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for users table
 CREATE POLICY "Users can view their own profile" ON users
@@ -213,6 +232,28 @@ CREATE POLICY "Group members can update checklist items" ON checklist_items
             WHERE p.id = checklist_items.project_id
             AND gm.user_id = auth.uid()
         )
+    );
+
+-- Create policies for project_files
+CREATE POLICY "Group members can view project files" ON project_files
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM projects p
+            JOIN group_memberships gm ON p.group_id = gm.group_id
+            WHERE p.id = project_files.project_id
+            AND gm.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Group members can upload project files" ON project_files
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM projects p
+            JOIN group_memberships gm ON p.group_id = gm.group_id
+            WHERE p.id = project_files.project_id
+            AND gm.user_id = auth.uid()
+        )
+        AND auth.uid() = uploaded_by
     );
 
 -- Create functions to automatically update updated_at timestamps

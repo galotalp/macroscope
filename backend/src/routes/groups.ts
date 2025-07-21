@@ -4,6 +4,38 @@ import { authenticateToken } from '../middleware/auth';
 
 const router = express.Router();
 
+// In-memory storage for join requests (temporary solution)
+interface JoinRequest {
+  id: string;
+  groupId: string;
+  userId: string;
+  username: string;
+  email: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: Date;
+  respondedAt?: Date;
+  respondedBy?: string;
+}
+
+const joinRequests: JoinRequest[] = [];
+
+// Helper function to generate request ID
+const generateRequestId = () => Math.random().toString(36).substring(2, 15);
+
+// Helper function to get user info
+const getUserInfo = async (userId: string) => {
+  if (!supabase) throw new Error('Database not available');
+  
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('username, email')
+    .eq('id', userId)
+    .single();
+  
+  if (error) throw error;
+  return user;
+};
+
 // Get user's groups
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -186,7 +218,7 @@ router.post('/:groupId/join', authenticateToken, async (req, res) => {
   }
 });
 
-// Request to join a group (placeholder - joins directly for now)
+// Request to join a group (creates a pending request)
 router.post('/:groupId/request-join', authenticateToken, async (req, res) => {
   try {
     const { groupId } = req.params;
@@ -218,21 +250,35 @@ router.post('/:groupId/request-join', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'You are already a member of this group' });
     }
 
-    // For now, just join directly (simulating instant approval)
-    const { error: insertError } = await supabase
-      .from('group_memberships')
-      .insert([
-        { group_id: groupId, user_id: req.user.id, role: 'member' }
-      ]);
+    // Check if user already has a pending request
+    const existingRequest = joinRequests.find(
+      r => r.groupId === groupId && r.userId === req.user.id && r.status === 'pending'
+    );
 
-    if (insertError) {
-      console.error('Error joining group:', insertError);
-      return res.status(500).json({ error: 'Failed to join group' });
+    if (existingRequest) {
+      return res.status(400).json({ error: 'You already have a pending request for this group' });
     }
 
+    // Get user info
+    const userInfo = await getUserInfo(req.user.id);
+
+    // Create join request
+    const joinRequest: JoinRequest = {
+      id: generateRequestId(),
+      groupId,
+      userId: req.user.id,
+      username: userInfo.username,
+      email: userInfo.email,
+      status: 'pending',
+      requestedAt: new Date()
+    };
+
+    joinRequests.push(joinRequest);
+
     res.status(201).json({
-      message: 'Join request approved automatically (demo mode)',
-      groupName: group.name
+      message: 'Join request sent successfully. The group owner will review your request.',
+      groupName: group.name,
+      requestId: joinRequest.id
     });
   } catch (error) {
     console.error('Error in request join route:', error);
@@ -341,13 +387,27 @@ router.get('/:groupId/details', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch members' });
     }
 
+    // Get pending join requests for this group
+    const pendingRequests = joinRequests.filter(
+      r => r.groupId === groupId && r.status === 'pending'
+    );
+
     res.json({
       group: {
         ...group,
         invite_code: `TMP-${group.id.substring(0, 8)}`
       },
       members,
-      joinRequests: [] // No join requests for now
+      joinRequests: pendingRequests.map(r => ({
+        id: r.id,
+        status: r.status,
+        requested_at: r.requestedAt.toISOString(),
+        users: {
+          id: r.userId,
+          username: r.username,
+          email: r.email
+        }
+      }))
     });
   } catch (error) {
     console.error('Error in group details route:', error);
@@ -452,9 +512,70 @@ router.delete('/:groupId', authenticateToken, async (req, res) => {
   }
 });
 
-// Placeholder for join request actions
+// Approve or reject join request
 router.post('/:groupId/join-requests/:requestId/:action', authenticateToken, async (req, res) => {
-  res.status(501).json({ error: 'Join request approval not implemented yet (requires database migration)' });
+  try {
+    const { groupId, requestId, action } = req.params;
+
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action. Must be approve or reject' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    // Check if user is admin of the group
+    const { data: membership, error: membershipError } = await supabase
+      .from('group_memberships')
+      .select('role')
+      .eq('group_id', groupId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (membershipError || !membership || membership.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
+    }
+
+    // Find the join request
+    const requestIndex = joinRequests.findIndex(r => r.id === requestId && r.groupId === groupId);
+    
+    if (requestIndex === -1) {
+      return res.status(404).json({ error: 'Join request not found' });
+    }
+
+    const joinRequest = joinRequests[requestIndex];
+
+    if (joinRequest.status !== 'pending') {
+      return res.status(400).json({ error: 'This request has already been processed' });
+    }
+
+    // Update the request status
+    joinRequest.status = action === 'approve' ? 'approved' : 'rejected';
+    joinRequest.respondedAt = new Date();
+    joinRequest.respondedBy = req.user.id;
+
+    // If approved, add user to group
+    if (action === 'approve') {
+      const { error: membershipInsertError } = await supabase
+        .from('group_memberships')
+        .insert([
+          { group_id: groupId, user_id: joinRequest.userId, role: 'member' }
+        ]);
+
+      if (membershipInsertError) {
+        console.error('Error adding user to group:', membershipInsertError);
+        return res.status(500).json({ error: 'Failed to add user to group' });
+      }
+    }
+
+    res.json({
+      message: `Join request ${action === 'approve' ? 'approved' : 'rejected'} successfully`
+    });
+  } catch (error) {
+    console.error('Error in join request action route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 export default router;

@@ -6,10 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const auth_1 = require("../middleware/auth");
 const router = express_1.default.Router();
-// In-memory storage for demo
 let projects = [];
 let nextProjectId = 1;
-// Get projects for a group
 router.get('/group/:groupId', auth_1.authenticateToken, async (req, res) => {
     try {
         const groupId = parseInt(req.params.groupId);
@@ -21,14 +19,12 @@ router.get('/group/:groupId', auth_1.authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-// Create a new project
 router.post('/', auth_1.authenticateToken, async (req, res) => {
     try {
         const { name, description, groupId } = req.body;
         if (!name || !groupId) {
             return res.status(400).json({ error: 'Project name and group ID are required' });
         }
-        // Create the project
         const newProject = {
             id: nextProjectId++,
             name,

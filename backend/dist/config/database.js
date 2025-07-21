@@ -7,13 +7,29 @@ exports.supabase = exports.isDemoMode = void 0;
 const supabase_js_1 = require("@supabase/supabase-js");
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
-// Check if we have Supabase credentials
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
-exports.isDemoMode = !supabaseUrl || !supabaseKey;
-// Initialize Supabase client only if we have credentials
+const isValidUrl = supabaseUrl &&
+    supabaseUrl.trim() !== '' &&
+    supabaseUrl !== 'your-supabase-url-here' &&
+    supabaseUrl.startsWith('https://') &&
+    supabaseUrl.includes('.supabase.co');
+const isValidKey = supabaseKey &&
+    supabaseKey.trim() !== '' &&
+    supabaseKey !== 'your-supabase-anon-key-here' &&
+    supabaseKey.length > 20;
+exports.isDemoMode = !isValidUrl || !isValidKey;
 exports.supabase = exports.isDemoMode ? null : (0, supabase_js_1.createClient)(supabaseUrl, supabaseKey);
-console.log(exports.isDemoMode ?
-    '🔧 Running in demo mode - no Supabase credentials found' :
-    '🗄️  Connected to Supabase database');
+if (exports.isDemoMode) {
+    console.log('🔧 Running in demo mode - no valid Supabase credentials found');
+    if (supabaseUrl && supabaseUrl !== 'your-supabase-url-here') {
+        console.log('   Supabase URL format appears invalid:', supabaseUrl);
+    }
+    if (supabaseKey && supabaseKey !== 'your-supabase-anon-key-here') {
+        console.log('   Supabase key format appears invalid');
+    }
+}
+else {
+    console.log('🗄️  Connected to Supabase database');
+}
 //# sourceMappingURL=database.js.map

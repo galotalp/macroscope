@@ -7,20 +7,6 @@ const express_1 = __importDefault(require("express"));
 const database_1 = require("../config/database");
 const auth_1 = require("../middleware/auth");
 const router = express_1.default.Router();
-const joinRequests = [];
-const generateRequestId = () => Math.random().toString(36).substring(2, 15);
-const getUserInfo = async (userId) => {
-    if (!database_1.supabase)
-        throw new Error('Database not available');
-    const { data: user, error } = await database_1.supabase
-        .from('users')
-        .select('username, email')
-        .eq('id', userId)
-        .single();
-    if (error)
-        throw error;
-    return user;
-};
 router.get('/', auth_1.authenticateToken, async (req, res) => {
     try {
         if (!database_1.supabase) {
@@ -185,25 +171,18 @@ router.post('/:groupId/request-join', auth_1.authenticateToken, async (req, res)
         if (existingMembership) {
             return res.status(400).json({ error: 'You are already a member of this group' });
         }
-        const existingRequest = joinRequests.find(r => r.groupId === groupId && r.userId === req.user.id && r.status === 'pending');
-        if (existingRequest) {
-            return res.status(400).json({ error: 'You already have a pending request for this group' });
+        const { error: insertError } = await database_1.supabase
+            .from('group_memberships')
+            .insert([
+            { group_id: groupId, user_id: req.user.id, role: 'member' }
+        ]);
+        if (insertError) {
+            console.error('Error joining group:', insertError);
+            return res.status(500).json({ error: 'Failed to join group' });
         }
-        const userInfo = await getUserInfo(req.user.id);
-        const joinRequest = {
-            id: generateRequestId(),
-            groupId,
-            userId: req.user.id,
-            username: userInfo.username,
-            email: userInfo.email,
-            status: 'pending',
-            requestedAt: new Date()
-        };
-        joinRequests.push(joinRequest);
         res.status(201).json({
-            message: 'Join request sent successfully. The group owner will review your request.',
-            groupName: group.name,
-            requestId: joinRequest.id
+            message: 'Join request approved automatically (demo mode)',
+            groupName: group.name
         });
     }
     catch (error) {
@@ -284,20 +263,10 @@ router.get('/:groupId/details', auth_1.authenticateToken, async (req, res) => {
             console.error('Error fetching members:', membersError);
             return res.status(500).json({ error: 'Failed to fetch members' });
         }
-        const pendingRequests = joinRequests.filter(r => r.groupId === groupId && r.status === 'pending');
         res.json({
             group: Object.assign(Object.assign({}, group), { invite_code: `TMP-${group.id.substring(0, 8)}` }),
             members,
-            joinRequests: pendingRequests.map(r => ({
-                id: r.id,
-                status: r.status,
-                requested_at: r.requestedAt.toISOString(),
-                users: {
-                    id: r.userId,
-                    username: r.username,
-                    email: r.email
-                }
-            }))
+            joinRequests: []
         });
     }
     catch (error) {
@@ -380,53 +349,7 @@ router.delete('/:groupId', auth_1.authenticateToken, async (req, res) => {
     }
 });
 router.post('/:groupId/join-requests/:requestId/:action', auth_1.authenticateToken, async (req, res) => {
-    try {
-        const { groupId, requestId, action } = req.params;
-        if (!['approve', 'reject'].includes(action)) {
-            return res.status(400).json({ error: 'Invalid action. Must be approve or reject' });
-        }
-        if (!database_1.supabase) {
-            return res.status(500).json({ error: 'Database not available' });
-        }
-        const { data: membership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
-            .select('role')
-            .eq('group_id', groupId)
-            .eq('user_id', req.user.id)
-            .single();
-        if (membershipError || !membership || membership.role !== 'admin') {
-            return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
-        }
-        const requestIndex = joinRequests.findIndex(r => r.id === requestId && r.groupId === groupId);
-        if (requestIndex === -1) {
-            return res.status(404).json({ error: 'Join request not found' });
-        }
-        const joinRequest = joinRequests[requestIndex];
-        if (joinRequest.status !== 'pending') {
-            return res.status(400).json({ error: 'This request has already been processed' });
-        }
-        joinRequest.status = action === 'approve' ? 'approved' : 'rejected';
-        joinRequest.respondedAt = new Date();
-        joinRequest.respondedBy = req.user.id;
-        if (action === 'approve') {
-            const { error: membershipInsertError } = await database_1.supabase
-                .from('group_memberships')
-                .insert([
-                { group_id: groupId, user_id: joinRequest.userId, role: 'member' }
-            ]);
-            if (membershipInsertError) {
-                console.error('Error adding user to group:', membershipInsertError);
-                return res.status(500).json({ error: 'Failed to add user to group' });
-            }
-        }
-        res.json({
-            message: `Join request ${action === 'approve' ? 'approved' : 'rejected'} successfully`
-        });
-    }
-    catch (error) {
-        console.error('Error in join request action route:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    res.status(501).json({ error: 'Join request approval not implemented yet (requires database migration)' });
 });
 exports.default = router;
-//# sourceMappingURL=groups.js.map
+//# sourceMappingURL=groups-temp.js.map

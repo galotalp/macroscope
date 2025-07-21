@@ -3,14 +3,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.users = void 0;
 const express_1 = __importDefault(require("express"));
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
-const database_1 = require("../config/database");
 const auth_1 = require("../middleware/auth");
 const router = express_1.default.Router();
+let users = [];
+exports.users = users;
 const storage = multer_1.default.diskStorage({
     destination: (req, file, cb) => {
         const uploadDir = 'uploads/';
@@ -39,22 +41,20 @@ const upload = (0, multer_1.default)({
 });
 router.get('/profile', auth_1.authenticateToken, async (req, res) => {
     try {
-        if (!database_1.supabase) {
-            return res.status(500).json({ error: 'Database not available' });
-        }
-        const { data: user, error } = await database_1.supabase
-            .from('users')
-            .select('id, username, email, bio, profile_picture, created_at')
-            .eq('id', req.user.id)
-            .single();
-        if (error) {
-            console.error('Error fetching user profile:', error);
-            return res.status(500).json({ error: 'Failed to fetch user profile' });
-        }
+        const user = users.find(u => u.id === req.user.id);
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
-        res.json({ user });
+        res.json({
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                bio: user.bio || '',
+                profile_picture: user.profile_picture || null,
+                created_at: user.created_at
+            }
+        });
     }
     catch (error) {
         console.error('Error in profile route:', error);
@@ -64,20 +64,21 @@ router.get('/profile', auth_1.authenticateToken, async (req, res) => {
 router.put('/profile', auth_1.authenticateToken, async (req, res) => {
     try {
         const { bio } = req.body;
-        if (!database_1.supabase) {
-            return res.status(500).json({ error: 'Database not available' });
+        const userIndex = users.findIndex(u => u.id === req.user.id);
+        if (userIndex === -1) {
+            return res.status(404).json({ error: 'User not found' });
         }
-        const { data: user, error } = await database_1.supabase
-            .from('users')
-            .update({ bio })
-            .eq('id', req.user.id)
-            .select('id, username, email, bio, profile_picture, created_at')
-            .single();
-        if (error) {
-            console.error('Error updating user profile:', error);
-            return res.status(500).json({ error: 'Failed to update user profile' });
-        }
-        res.json({ user });
+        users[userIndex].bio = bio;
+        res.json({
+            user: {
+                id: users[userIndex].id,
+                username: users[userIndex].username,
+                email: users[userIndex].email,
+                bio: users[userIndex].bio || '',
+                profile_picture: users[userIndex].profile_picture || null,
+                created_at: users[userIndex].created_at
+            }
+        });
     }
     catch (error) {
         console.error('Error in profile update route:', error);
@@ -89,23 +90,22 @@ router.post('/profile/upload-picture', auth_1.authenticateToken, upload.single('
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
-        if (!database_1.supabase) {
-            return res.status(500).json({ error: 'Database not available' });
-        }
         const profilePictureUrl = `/uploads/${req.file.filename}`;
-        const { data: user, error } = await database_1.supabase
-            .from('users')
-            .update({ profile_picture: profilePictureUrl })
-            .eq('id', req.user.id)
-            .select('id, username, email, bio, profile_picture, created_at')
-            .single();
-        if (error) {
-            console.error('Error updating profile picture:', error);
+        const userIndex = users.findIndex(u => u.id === req.user.id);
+        if (userIndex === -1) {
             fs_1.default.unlinkSync(req.file.path);
-            return res.status(500).json({ error: 'Failed to update profile picture' });
+            return res.status(404).json({ error: 'User not found' });
         }
+        users[userIndex].profile_picture = profilePictureUrl;
         res.json({
-            user,
+            user: {
+                id: users[userIndex].id,
+                username: users[userIndex].username,
+                email: users[userIndex].email,
+                bio: users[userIndex].bio || '',
+                profile_picture: users[userIndex].profile_picture,
+                created_at: users[userIndex].created_at
+            },
             message: 'Profile picture updated successfully'
         });
     }
@@ -123,31 +123,17 @@ router.post('/change-password', auth_1.authenticateToken, async (req, res) => {
         if (!currentPassword || !newPassword) {
             return res.status(400).json({ error: 'Current password and new password are required' });
         }
-        if (!database_1.supabase) {
-            return res.status(500).json({ error: 'Database not available' });
-        }
-        const { data: user, error: userError } = await database_1.supabase
-            .from('users')
-            .select('password_hash')
-            .eq('id', req.user.id)
-            .single();
-        if (userError || !user) {
+        const userIndex = users.findIndex(u => u.id === req.user.id);
+        if (userIndex === -1) {
             return res.status(404).json({ error: 'User not found' });
         }
-        const isCurrentPasswordValid = await bcryptjs_1.default.compare(currentPassword, user.password_hash);
+        const isCurrentPasswordValid = await bcryptjs_1.default.compare(currentPassword, users[userIndex].password_hash);
         if (!isCurrentPasswordValid) {
             return res.status(400).json({ error: 'Current password is incorrect' });
         }
         const saltRounds = 10;
         const newPasswordHash = await bcryptjs_1.default.hash(newPassword, saltRounds);
-        const { error: updateError } = await database_1.supabase
-            .from('users')
-            .update({ password_hash: newPasswordHash })
-            .eq('id', req.user.id);
-        if (updateError) {
-            console.error('Error updating password:', updateError);
-            return res.status(500).json({ error: 'Failed to update password' });
-        }
+        users[userIndex].password_hash = newPasswordHash;
         res.json({ message: 'Password updated successfully' });
     }
     catch (error) {
@@ -156,4 +142,4 @@ router.post('/change-password', auth_1.authenticateToken, async (req, res) => {
     }
 });
 exports.default = router;
-//# sourceMappingURL=users.js.map
+//# sourceMappingURL=users-demo.js.map

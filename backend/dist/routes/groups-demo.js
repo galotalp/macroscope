@@ -6,11 +6,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const auth_1 = require("../middleware/auth");
 const router = express_1.default.Router();
-// In-memory storage for demo
 let groups = [];
 let memberships = [];
 let nextGroupId = 1;
-// Get user's groups
 router.get('/', auth_1.authenticateToken, async (req, res) => {
     try {
         const userMemberships = memberships.filter(m => m.user_id === req.user.id);
@@ -22,14 +20,12 @@ router.get('/', auth_1.authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-// Create a new group
 router.post('/', auth_1.authenticateToken, async (req, res) => {
     try {
         const { name, description } = req.body;
         if (!name) {
             return res.status(400).json({ error: 'Group name is required' });
         }
-        // Create the group
         const newGroup = {
             id: nextGroupId++,
             name,
@@ -38,7 +34,6 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
             created_at: new Date().toISOString()
         };
         groups.push(newGroup);
-        // Add creator as a member
         memberships.push({
             group_id: newGroup.id,
             user_id: req.user.id,
@@ -54,21 +49,17 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-// Join a group
 router.post('/:groupId/join', auth_1.authenticateToken, async (req, res) => {
     try {
         const groupId = parseInt(req.params.groupId);
-        // Check if group exists
         const group = groups.find(g => g.id === groupId);
         if (!group) {
             return res.status(404).json({ error: 'Group not found' });
         }
-        // Check if user is already a member
         const existingMembership = memberships.find(m => m.group_id === groupId && m.user_id === req.user.id);
         if (existingMembership) {
             return res.status(400).json({ error: 'You are already a member of this group' });
         }
-        // Add user to group
         memberships.push({
             group_id: groupId,
             user_id: req.user.id,
@@ -84,7 +75,6 @@ router.post('/:groupId/join', auth_1.authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-// Get available groups to join
 router.get('/available', auth_1.authenticateToken, async (req, res) => {
     try {
         const userMemberships = memberships.filter(m => m.user_id === req.user.id);

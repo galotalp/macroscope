@@ -7,20 +7,6 @@ const express_1 = __importDefault(require("express"));
 const database_1 = require("../config/database");
 const auth_1 = require("../middleware/auth");
 const router = express_1.default.Router();
-const joinRequests = [];
-const generateRequestId = () => Math.random().toString(36).substring(2, 15);
-const getUserInfo = async (userId) => {
-    if (!database_1.supabase)
-        throw new Error('Database not available');
-    const { data: user, error } = await database_1.supabase
-        .from('users')
-        .select('username, email')
-        .eq('id', userId)
-        .single();
-    if (error)
-        throw error;
-    return user;
-};
 router.get('/', auth_1.authenticateToken, async (req, res) => {
     try {
         if (!database_1.supabase) {
@@ -59,10 +45,11 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
         if (!database_1.supabase) {
             return res.status(500).json({ error: 'Database not available' });
         }
+        const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
         const { data: group, error: groupError } = await database_1.supabase
             .from('groups')
             .insert([
-            { name, description, created_by: req.user.id }
+            { name, description, created_by: req.user.id, invite_code: inviteCode }
         ])
             .select()
             .single();
@@ -81,7 +68,7 @@ router.post('/', auth_1.authenticateToken, async (req, res) => {
         }
         res.status(201).json({
             message: 'Group created successfully',
-            group: Object.assign(Object.assign({}, group), { invite_code: `TMP-${group.id.substring(0, 8)}` })
+            group
         });
     }
     catch (error) {
@@ -104,61 +91,19 @@ router.get('/search', auth_1.authenticateToken, async (req, res) => {
         id,
         name,
         description,
+        invite_code,
         created_at,
         created_by
       `)
-            .ilike('name', `%${query}%`);
+            .or(`name.ilike.%${query}%,invite_code.ilike.%${query}%`);
         if (error) {
             console.error('Error searching groups:', error);
             return res.status(500).json({ error: 'Failed to search groups' });
         }
-        const groupsWithInviteCodes = groups.map(group => (Object.assign(Object.assign({}, group), { invite_code: `TMP-${group.id.substring(0, 8)}` })));
-        res.json({ groups: groupsWithInviteCodes });
+        res.json({ groups });
     }
     catch (error) {
         console.error('Error in search groups route:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-router.post('/:groupId/join', auth_1.authenticateToken, async (req, res) => {
-    try {
-        const { groupId } = req.params;
-        if (!database_1.supabase) {
-            return res.status(500).json({ error: 'Database not available' });
-        }
-        const { data: group, error: groupError } = await database_1.supabase
-            .from('groups')
-            .select('id, name')
-            .eq('id', groupId)
-            .single();
-        if (groupError || !group) {
-            return res.status(404).json({ error: 'Group not found' });
-        }
-        const { data: existingMembership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
-            .select('id')
-            .eq('group_id', groupId)
-            .eq('user_id', req.user.id)
-            .single();
-        if (existingMembership) {
-            return res.status(400).json({ error: 'You are already a member of this group' });
-        }
-        const { error: insertError } = await database_1.supabase
-            .from('group_memberships')
-            .insert([
-            { group_id: groupId, user_id: req.user.id, role: 'member' }
-        ]);
-        if (insertError) {
-            console.error('Error joining group:', insertError);
-            return res.status(500).json({ error: 'Failed to join group' });
-        }
-        res.status(201).json({
-            message: 'Successfully joined group',
-            groupName: group.name
-        });
-    }
-    catch (error) {
-        console.error('Error in join group route:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -185,62 +130,36 @@ router.post('/:groupId/request-join', auth_1.authenticateToken, async (req, res)
         if (existingMembership) {
             return res.status(400).json({ error: 'You are already a member of this group' });
         }
-        const existingRequest = joinRequests.find(r => r.groupId === groupId && r.userId === req.user.id && r.status === 'pending');
+        const { data: existingRequest, error: requestError } = await database_1.supabase
+            .from('group_join_requests')
+            .select('id, status')
+            .eq('group_id', groupId)
+            .eq('user_id', req.user.id)
+            .single();
         if (existingRequest) {
-            return res.status(400).json({ error: 'You already have a pending request for this group' });
+            if (existingRequest.status === 'pending') {
+                return res.status(400).json({ error: 'You already have a pending request for this group' });
+            }
+            if (existingRequest.status === 'approved') {
+                return res.status(400).json({ error: 'Your request was already approved' });
+            }
         }
-        const userInfo = await getUserInfo(req.user.id);
-        const joinRequest = {
-            id: generateRequestId(),
-            groupId,
-            userId: req.user.id,
-            username: userInfo.username,
-            email: userInfo.email,
-            status: 'pending',
-            requestedAt: new Date()
-        };
-        joinRequests.push(joinRequest);
+        const { error: insertError } = await database_1.supabase
+            .from('group_join_requests')
+            .insert([
+            { group_id: groupId, user_id: req.user.id, status: 'pending' }
+        ]);
+        if (insertError) {
+            console.error('Error creating join request:', insertError);
+            return res.status(500).json({ error: 'Failed to create join request' });
+        }
         res.status(201).json({
-            message: 'Join request sent successfully. The group owner will review your request.',
-            groupName: group.name,
-            requestId: joinRequest.id
+            message: 'Join request sent successfully',
+            groupName: group.name
         });
     }
     catch (error) {
         console.error('Error in request join route:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
-router.get('/available', auth_1.authenticateToken, async (req, res) => {
-    try {
-        if (!database_1.supabase) {
-            return res.status(500).json({ error: 'Database not available' });
-        }
-        const { data: userGroups, error: userGroupsError } = await database_1.supabase
-            .from('group_memberships')
-            .select('group_id')
-            .eq('user_id', req.user.id);
-        if (userGroupsError) {
-            console.error('Error fetching user groups:', userGroupsError);
-            return res.status(500).json({ error: 'Failed to fetch user groups' });
-        }
-        const userGroupIds = userGroups.map((membership) => membership.group_id);
-        let query = database_1.supabase
-            .from('groups')
-            .select('id, name, description, created_at, created_by');
-        if (userGroupIds.length > 0) {
-            query = query.not('id', 'in', `(${userGroupIds.join(',')})`);
-        }
-        const { data: availableGroups, error: availableError } = await query;
-        if (availableError) {
-            console.error('Error fetching available groups:', availableError);
-            return res.status(500).json({ error: 'Failed to fetch available groups' });
-        }
-        const groupsWithInviteCodes = availableGroups.map(group => (Object.assign(Object.assign({}, group), { invite_code: `TMP-${group.id.substring(0, 8)}` })));
-        res.json({ groups: groupsWithInviteCodes });
-    }
-    catch (error) {
-        console.error('Error in available groups route:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -284,24 +203,94 @@ router.get('/:groupId/details', auth_1.authenticateToken, async (req, res) => {
             console.error('Error fetching members:', membersError);
             return res.status(500).json({ error: 'Failed to fetch members' });
         }
-        const pendingRequests = joinRequests.filter(r => r.groupId === groupId && r.status === 'pending');
+        const { data: joinRequests, error: requestsError } = await database_1.supabase
+            .from('group_join_requests')
+            .select(`
+        id,
+        status,
+        requested_at,
+        users (
+          id,
+          username,
+          email
+        )
+      `)
+            .eq('group_id', groupId)
+            .eq('status', 'pending');
+        if (requestsError) {
+            console.error('Error fetching join requests:', requestsError);
+            return res.status(500).json({ error: 'Failed to fetch join requests' });
+        }
         res.json({
-            group: Object.assign(Object.assign({}, group), { invite_code: `TMP-${group.id.substring(0, 8)}` }),
+            group,
             members,
-            joinRequests: pendingRequests.map(r => ({
-                id: r.id,
-                status: r.status,
-                requested_at: r.requestedAt.toISOString(),
-                users: {
-                    id: r.userId,
-                    username: r.username,
-                    email: r.email
-                }
-            }))
+            joinRequests
         });
     }
     catch (error) {
         console.error('Error in group details route:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+router.post('/:groupId/join-requests/:requestId/:action', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const { groupId, requestId, action } = req.params;
+        if (!['approve', 'reject'].includes(action)) {
+            return res.status(400).json({ error: 'Invalid action. Must be approve or reject' });
+        }
+        if (!database_1.supabase) {
+            return res.status(500).json({ error: 'Database not available' });
+        }
+        const { data: membership, error: membershipError } = await database_1.supabase
+            .from('group_memberships')
+            .select('role')
+            .eq('group_id', groupId)
+            .eq('user_id', req.user.id)
+            .single();
+        if (membershipError || !membership || membership.role !== 'admin') {
+            return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
+        }
+        const { data: joinRequest, error: requestError } = await database_1.supabase
+            .from('group_join_requests')
+            .select('*')
+            .eq('id', requestId)
+            .eq('group_id', groupId)
+            .single();
+        if (requestError || !joinRequest) {
+            return res.status(404).json({ error: 'Join request not found' });
+        }
+        if (joinRequest.status !== 'pending') {
+            return res.status(400).json({ error: 'This request has already been processed' });
+        }
+        const { error: updateError } = await database_1.supabase
+            .from('group_join_requests')
+            .update({
+            status: action === 'approve' ? 'approved' : 'rejected',
+            responded_at: new Date().toISOString(),
+            responded_by: req.user.id
+        })
+            .eq('id', requestId);
+        if (updateError) {
+            console.error('Error updating join request:', updateError);
+            return res.status(500).json({ error: 'Failed to update join request' });
+        }
+        if (action === 'approve') {
+            const { error: membershipInsertError } = await database_1.supabase
+                .from('group_memberships')
+                .insert([
+                { group_id: groupId, user_id: joinRequest.user_id, role: 'member' }
+            ]);
+            if (membershipInsertError) {
+                console.error('Error adding user to group:', membershipInsertError);
+                return res.status(500).json({ error: 'Failed to add user to group' });
+            }
+        }
+        res.json({
+            message: `Join request ${action === 'approve' ? 'approved' : 'rejected'} successfully`
+        });
+    }
+    catch (error) {
+        console.error('Error in join request action route:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -379,54 +368,47 @@ router.delete('/:groupId', auth_1.authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
-router.post('/:groupId/join-requests/:requestId/:action', auth_1.authenticateToken, async (req, res) => {
+router.post('/:groupId/join', auth_1.authenticateToken, async (req, res) => {
     try {
-        const { groupId, requestId, action } = req.params;
-        if (!['approve', 'reject'].includes(action)) {
-            return res.status(400).json({ error: 'Invalid action. Must be approve or reject' });
-        }
+        const { groupId } = req.params;
         if (!database_1.supabase) {
             return res.status(500).json({ error: 'Database not available' });
         }
-        const { data: membership, error: membershipError } = await database_1.supabase
+        const { data: group, error: groupError } = await database_1.supabase
+            .from('groups')
+            .select('id, name')
+            .eq('id', groupId)
+            .single();
+        if (groupError || !group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+        const { data: existingMembership, error: membershipError } = await database_1.supabase
             .from('group_memberships')
-            .select('role')
+            .select('id')
             .eq('group_id', groupId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership || membership.role !== 'admin') {
-            return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
+        if (existingMembership) {
+            return res.status(400).json({ error: 'You are already a member of this group' });
         }
-        const requestIndex = joinRequests.findIndex(r => r.id === requestId && r.groupId === groupId);
-        if (requestIndex === -1) {
-            return res.status(404).json({ error: 'Join request not found' });
+        const { error: insertError } = await database_1.supabase
+            .from('group_memberships')
+            .insert([
+            { group_id: groupId, user_id: req.user.id, role: 'member' }
+        ]);
+        if (insertError) {
+            console.error('Error joining group:', insertError);
+            return res.status(500).json({ error: 'Failed to join group' });
         }
-        const joinRequest = joinRequests[requestIndex];
-        if (joinRequest.status !== 'pending') {
-            return res.status(400).json({ error: 'This request has already been processed' });
-        }
-        joinRequest.status = action === 'approve' ? 'approved' : 'rejected';
-        joinRequest.respondedAt = new Date();
-        joinRequest.respondedBy = req.user.id;
-        if (action === 'approve') {
-            const { error: membershipInsertError } = await database_1.supabase
-                .from('group_memberships')
-                .insert([
-                { group_id: groupId, user_id: joinRequest.userId, role: 'member' }
-            ]);
-            if (membershipInsertError) {
-                console.error('Error adding user to group:', membershipInsertError);
-                return res.status(500).json({ error: 'Failed to add user to group' });
-            }
-        }
-        res.json({
-            message: `Join request ${action === 'approve' ? 'approved' : 'rejected'} successfully`
+        res.status(201).json({
+            message: 'Successfully joined group',
+            groupName: group.name
         });
     }
     catch (error) {
-        console.error('Error in join request action route:', error);
+        console.error('Error in join group route:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 exports.default = router;
-//# sourceMappingURL=groups.js.map
+//# sourceMappingURL=groups-full.js.map
