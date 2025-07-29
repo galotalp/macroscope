@@ -669,8 +669,15 @@ router.post('/:projectId/files', authenticateToken, async (req, res) => {
     const uniqueFilename = `${timestamp}-${filename}`;
     const storagePath = `project-files/${projectId}/${uniqueFilename}`;
 
-    // Upload to Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    // Create service role Supabase client for storage operations
+    const { createClient } = require('@supabase/supabase-js');
+    const serviceSupabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Upload to Supabase Storage with service role client
+    const { data: uploadData, error: uploadError } = await serviceSupabase.storage
       .from('project-files')
       .upload(storagePath, buffer, {
         contentType: mimeType || 'application/octet-stream',
@@ -683,7 +690,7 @@ router.post('/:projectId/files', authenticateToken, async (req, res) => {
     }
 
     // Get public URL
-    const { data: { publicUrl } } = supabase.storage
+    const { data: { publicUrl } } = serviceSupabase.storage
       .from('project-files')
       .getPublicUrl(storagePath);
 
@@ -694,6 +701,7 @@ router.post('/:projectId/files', authenticateToken, async (req, res) => {
         {
           project_id: projectId,
           filename: filename,
+          original_name: filename,
           storage_path: storagePath,
           public_url: publicUrl,
           file_size: fileSize || buffer.length,
@@ -707,7 +715,7 @@ router.post('/:projectId/files', authenticateToken, async (req, res) => {
     if (fileError) {
       console.error('Error saving file record:', fileError);
       // Clean up uploaded file if database insert fails
-      await supabase.storage.from('project-files').remove([storagePath]);
+      await serviceSupabase.storage.from('project-files').remove([storagePath]);
       return res.status(500).json({ error: 'Failed to save file record' });
     }
 

@@ -528,7 +528,9 @@ router.post('/:projectId/files', auth_1.authenticateToken, async (req, res) => {
         const timestamp = Date.now();
         const uniqueFilename = `${timestamp}-${filename}`;
         const storagePath = `project-files/${projectId}/${uniqueFilename}`;
-        const { data: uploadData, error: uploadError } = await database_1.supabase.storage
+        const { createClient } = require('@supabase/supabase-js');
+        const serviceSupabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        const { data: uploadData, error: uploadError } = await serviceSupabase.storage
             .from('project-files')
             .upload(storagePath, buffer, {
             contentType: mimeType || 'application/octet-stream',
@@ -538,7 +540,7 @@ router.post('/:projectId/files', auth_1.authenticateToken, async (req, res) => {
             console.error('Error uploading to Supabase Storage:', uploadError);
             return res.status(500).json({ error: 'Failed to upload file to storage' });
         }
-        const { data: { publicUrl } } = database_1.supabase.storage
+        const { data: { publicUrl } } = serviceSupabase.storage
             .from('project-files')
             .getPublicUrl(storagePath);
         const { data: fileRecord, error: fileError } = await database_1.supabase
@@ -547,6 +549,7 @@ router.post('/:projectId/files', auth_1.authenticateToken, async (req, res) => {
             {
                 project_id: projectId,
                 filename: filename,
+                original_name: filename,
                 storage_path: storagePath,
                 public_url: publicUrl,
                 file_size: fileSize || buffer.length,
@@ -558,7 +561,7 @@ router.post('/:projectId/files', auth_1.authenticateToken, async (req, res) => {
             .single();
         if (fileError) {
             console.error('Error saving file record:', fileError);
-            await database_1.supabase.storage.from('project-files').remove([storagePath]);
+            await serviceSupabase.storage.from('project-files').remove([storagePath]);
             return res.status(500).json({ error: 'Failed to save file record' });
         }
         console.log('File uploaded successfully to Supabase Storage');

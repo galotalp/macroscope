@@ -2,9 +2,9 @@
 > backend@1.0.0 start
 > node dist/index.js
 
-[dotenv@17.2.0] injecting env (4) from .env (tip: 🔐 encrypt with dotenvx: https://dotenvx.com)
+[dotenv@17.2.0] injecting env (5) from .env (tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' })
 🗄️  Connected to Supabase database
-[dotenv@17.2.0] injecting env (0) from .env (tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] })
+[dotenv@17.2.0] injecting env (0) from .env (tip: ⚙️  override existing env vars with { override: true })
 Routes imported successfully
 🗄️  Using Supabase routes (full database functionality)
 Registering auth routes...
@@ -12,24 +12,23 @@ Registering users routes...
 Users routes mounted at /api/users
 Registering groups routes...
 Registering projects routes...
-(node:79519) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(node:90216) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
 (Use `node --trace-deprecation ...` to show where the warning was created)
 Server is running on port 3000
-File upload attempt for project: f882ae14-e149-4672-8407-c661862e644b
+File upload attempt for project: 5d215235-deba-433b-b2f5-8e029f8e36c2
 Filename: Banana-Single.jpg
 MimeType: image/jpeg
 FileSize: 2085213
-Error uploading to Supabase Storage: {
-  statusCode: '403',
-  error: 'Unauthorized',
-  message: 'new row violates row-level security policy'
-}
-File upload attempt for project: f882ae14-e149-4672-8407-c661862e644b
+File uploaded successfully to Supabase Storage
+File upload attempt for project: 5d215235-deba-433b-b2f5-8e029f8e36c2
 Filename: Banana-Single.jpg
 MimeType: image/jpeg
 FileSize: 2085213
-Error uploading to Supabase Storage: {
-  statusCode: '403',
-  error: 'Unauthorized',
-  message: 'new row violates row-level security policy'
-}
+File uploaded successfully to Supabase Storage
+File upload attempt for project: 5d215235-deba-433b-b2f5-8e029f8e36c2
+Filename: sample size calculation MMF.docx
+MimeType: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+FileSize: 22783
+File uploaded successfully to Supabase Storage
+SUPABASE AUTH ROUTE: Login request received
+SUPABASE AUTH ROUTE: Login request received
