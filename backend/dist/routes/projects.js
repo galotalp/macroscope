@@ -61,7 +61,16 @@ router.get('/group/:groupId', auth_1.authenticateToken, async (req, res) => {
             console.error('Error fetching projects:', error);
             return res.status(500).json({ error: 'Failed to fetch projects' });
         }
-        res.json({ projects });
+        const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 };
+        const sortedProjects = (projects === null || projects === void 0 ? void 0 : projects.sort((a, b) => {
+            const aPriority = priorityOrder[a.priority] || 2;
+            const bPriority = priorityOrder[b.priority] || 2;
+            if (aPriority !== bPriority) {
+                return bPriority - aPriority;
+            }
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        })) || [];
+        res.json({ projects: sortedProjects });
     }
     catch (error) {
         console.error('Error in projects route:', error);
@@ -153,19 +162,20 @@ router.get('/:projectId', auth_1.authenticateToken, async (req, res) => {
         if (membershipError || !membership) {
             return res.status(403).json({ error: 'Access denied' });
         }
-        const { data: assignments, error: assignmentError } = await database_1.supabase
+        const { data: assignments, error: assignmentError2 } = await database_1.supabase
             .from('project_assignments')
             .select(`
         *,
         users!project_assignments_user_id_fkey (
           id,
           username,
-          email
+          email,
+          profile_picture
         )
       `)
             .eq('project_id', projectId);
-        if (assignmentError) {
-            console.error('Error fetching assignments:', assignmentError);
+        if (assignmentError2) {
+            console.error('Error fetching assignments:', assignmentError2);
         }
         const { data: checklist, error: checklistError } = await database_1.supabase
             .from('checklist_items')
@@ -208,14 +218,14 @@ router.put('/:projectId', auth_1.authenticateToken, async (req, res) => {
         if (projectError || !project) {
             return res.status(404).json({ error: 'Project not found' });
         }
-        const { data: membership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
+        const { data: projectAssignment, error: assignmentError } = await database_1.supabase
+            .from('project_assignments')
             .select('*')
-            .eq('group_id', project.group_id)
+            .eq('project_id', projectId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership) {
-            return res.status(403).json({ error: 'Access denied' });
+        if (assignmentError || !projectAssignment) {
+            return res.status(403).json({ error: 'Access denied - you must be a project member to edit this project' });
         }
         const { data: updatedProject, error: updateError } = await database_1.supabase
             .from('projects')
@@ -262,14 +272,14 @@ router.post('/:projectId/checklist', auth_1.authenticateToken, async (req, res) 
         if (projectError || !project) {
             return res.status(404).json({ error: 'Project not found' });
         }
-        const { data: membership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
+        const { data: projectAssignment, error: assignmentError } = await database_1.supabase
+            .from('project_assignments')
             .select('*')
-            .eq('group_id', project.group_id)
+            .eq('project_id', projectId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership) {
-            return res.status(403).json({ error: 'Access denied' });
+        if (assignmentError || !projectAssignment) {
+            return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
         }
         const { data: item, error: insertError } = await database_1.supabase
             .from('checklist_items')
@@ -314,14 +324,14 @@ router.put('/:projectId/checklist/:itemId', auth_1.authenticateToken, async (req
         if (projectError || !project) {
             return res.status(404).json({ error: 'Project not found' });
         }
-        const { data: membership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
+        const { data: projectAssignment, error: assignmentError } = await database_1.supabase
+            .from('project_assignments')
             .select('*')
-            .eq('group_id', project.group_id)
+            .eq('project_id', projectId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership) {
-            return res.status(403).json({ error: 'Access denied' });
+        if (assignmentError || !projectAssignment) {
+            return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
         }
         const { data: item, error: updateError } = await database_1.supabase
             .from('checklist_items')
@@ -362,14 +372,14 @@ router.delete('/:projectId/checklist/:itemId', auth_1.authenticateToken, async (
         if (projectError || !project) {
             return res.status(404).json({ error: 'Project not found' });
         }
-        const { data: membership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
+        const { data: projectAssignment, error: assignmentError } = await database_1.supabase
+            .from('project_assignments')
             .select('*')
-            .eq('group_id', project.group_id)
+            .eq('project_id', projectId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership) {
-            return res.status(403).json({ error: 'Access denied' });
+        if (assignmentError || !projectAssignment) {
+            return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
         }
         const { error: deleteError } = await database_1.supabase
             .from('checklist_items')
@@ -442,14 +452,14 @@ router.post('/:projectId/assign', auth_1.authenticateToken, async (req, res) => 
         if (projectError || !project) {
             return res.status(404).json({ error: 'Project not found' });
         }
-        const { data: membership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
+        const { data: projectAssignment, error: assignmentError } = await database_1.supabase
+            .from('project_assignments')
             .select('*')
-            .eq('group_id', project.group_id)
+            .eq('project_id', projectId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership) {
-            return res.status(403).json({ error: 'Access denied' });
+        if (assignmentError || !projectAssignment) {
+            return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
         }
         const { data: assigneeMembership, error: assigneeError } = await database_1.supabase
             .from('group_memberships')
@@ -469,7 +479,7 @@ router.post('/:projectId/assign', auth_1.authenticateToken, async (req, res) => 
         if (existingAssignment) {
             return res.status(400).json({ error: 'User is already assigned to this project' });
         }
-        const { data: assignment, error: assignmentError } = await database_1.supabase
+        const { data: assignment, error: createAssignmentError } = await database_1.supabase
             .from('project_assignments')
             .insert([
             {
@@ -479,8 +489,8 @@ router.post('/:projectId/assign', auth_1.authenticateToken, async (req, res) => 
         ])
             .select()
             .single();
-        if (assignmentError) {
-            console.error('Error creating assignment:', assignmentError);
+        if (createAssignmentError) {
+            console.error('Error creating assignment:', createAssignmentError);
             return res.status(500).json({ error: 'Failed to assign user to project' });
         }
         res.status(201).json({
@@ -515,14 +525,14 @@ router.post('/:projectId/files', auth_1.authenticateToken, async (req, res) => {
         if (projectError || !project) {
             return res.status(404).json({ error: 'Project not found' });
         }
-        const { data: membership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
+        const { data: projectAssignment, error: assignmentError } = await database_1.supabase
+            .from('project_assignments')
             .select('*')
-            .eq('group_id', project.group_id)
+            .eq('project_id', projectId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership) {
-            return res.status(403).json({ error: 'Access denied' });
+        if (assignmentError || !projectAssignment) {
+            return res.status(403).json({ error: 'Access denied - you must be a project member to upload files' });
         }
         const buffer = Buffer.from(fileData, 'base64');
         const timestamp = Date.now();
@@ -627,8 +637,8 @@ router.get('/:projectId/files', auth_1.authenticateToken, async (req, res) => {
           )
         `)
                 .eq('project_id', projectId);
-            const validSortFields = ['filename', 'file_size', 'mime_type'];
-            let sortField = validSortFields.includes(sortBy) ? sortBy : 'filename';
+            const validSortFields = ['filename', 'file_size', 'mime_type', 'created_at'];
+            let sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
             const order = sortOrder === 'asc' ? 'asc' : 'desc';
             query = query.order(sortField, { ascending: order === 'asc' });
             const { data: filesWithUsers, error: joinError } = await query;
@@ -700,14 +710,14 @@ router.delete('/:projectId/files/:fileId', auth_1.authenticateToken, async (req,
         if (fileError || !fileRecord) {
             return res.status(404).json({ error: 'File not found' });
         }
-        const { data: membership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
+        const { data: projectAssignment, error: assignmentError } = await database_1.supabase
+            .from('project_assignments')
             .select('*')
-            .eq('group_id', fileRecord.projects.group_id)
+            .eq('project_id', projectId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership) {
-            return res.status(403).json({ error: 'Access denied' });
+        if (assignmentError || !projectAssignment) {
+            return res.status(403).json({ error: 'Access denied - you must be a project member to delete files' });
         }
         if (fileRecord.storage_path) {
             const { error: storageError } = await database_1.supabase.storage
@@ -732,6 +742,58 @@ router.delete('/:projectId/files/:fileId', auth_1.authenticateToken, async (req,
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+router.delete('/:projectId/assign/:userId', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const { projectId, userId } = req.params;
+        if (!database_1.supabase) {
+            return res.status(500).json({ error: 'Database not available' });
+        }
+        const { data: project, error: projectError } = await database_1.supabase
+            .from('projects')
+            .select('*')
+            .eq('id', projectId)
+            .single();
+        if (projectError || !project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+        const { data: projectAssignment, error: assignmentError } = await database_1.supabase
+            .from('project_assignments')
+            .select('*')
+            .eq('project_id', projectId)
+            .eq('user_id', req.user.id)
+            .single();
+        if (assignmentError || !projectAssignment) {
+            return res.status(403).json({ error: 'Access denied - you must be a project member to manage project members' });
+        }
+        const { data: allAssignments, error: allAssignmentsError } = await database_1.supabase
+            .from('project_assignments')
+            .select('*')
+            .eq('project_id', projectId);
+        if (allAssignmentsError) {
+            console.error('Error fetching all assignments:', allAssignmentsError);
+            return res.status(500).json({ error: 'Failed to check project assignments' });
+        }
+        if (allAssignments.length === 1 && project.created_by === userId) {
+            return res.status(400).json({ error: 'Cannot remove the project creator when they are the only member' });
+        }
+        const { error: deleteError } = await database_1.supabase
+            .from('project_assignments')
+            .delete()
+            .eq('project_id', projectId)
+            .eq('user_id', userId);
+        if (deleteError) {
+            console.error('Error removing assignment:', deleteError);
+            return res.status(500).json({ error: 'Failed to remove user from project' });
+        }
+        res.json({
+            message: 'User removed from project successfully'
+        });
+    }
+    catch (error) {
+        console.error('Error in remove user route:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 router.delete('/:projectId', auth_1.authenticateToken, async (req, res) => {
     try {
         const { projectId } = req.params;
@@ -746,14 +808,14 @@ router.delete('/:projectId', auth_1.authenticateToken, async (req, res) => {
         if (projectError || !project) {
             return res.status(404).json({ error: 'Project not found' });
         }
-        const { data: membership, error: membershipError } = await database_1.supabase
-            .from('group_memberships')
+        const { data: projectAssignment, error: assignmentError } = await database_1.supabase
+            .from('project_assignments')
             .select('*')
-            .eq('group_id', project.group_id)
+            .eq('project_id', projectId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership) {
-            return res.status(403).json({ error: 'Access denied' });
+        if (assignmentError || !projectAssignment) {
+            return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
         }
         await database_1.supabase
             .from('checklist_items')

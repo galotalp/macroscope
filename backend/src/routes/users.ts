@@ -1,40 +1,11 @@
 import express from 'express';
-import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { supabase } from '../config/database';
 import { authenticateToken } from '../middleware/auth';
+import { createClient } from '@supabase/supabase-js';
 
 const router = express.Router();
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = 'uploads/';
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'profile-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, and GIF are allowed.'));
-    }
-  }
-});
 
 // Get user profile
 router.get('/profile', authenticateToken, async (req, res) => {
@@ -68,15 +39,20 @@ router.get('/profile', authenticateToken, async (req, res) => {
 // Update user profile
 router.put('/profile', authenticateToken, async (req, res) => {
   try {
-    const { bio } = req.body;
+    const { bio, profile_picture } = req.body;
     
     if (!supabase) {
       return res.status(500).json({ error: 'Database not available' });
     }
     
+    // Prepare update data
+    const updateData: any = {};
+    if (bio !== undefined) updateData.bio = bio;
+    if (profile_picture !== undefined) updateData.profile_picture = profile_picture;
+    
     const { data: user, error } = await supabase
       .from('users')
-      .update({ bio })
+      .update(updateData)
       .eq('id', req.user.id)
       .select('id, username, email, bio, profile_picture, created_at')
       .single();
@@ -94,30 +70,71 @@ router.put('/profile', authenticateToken, async (req, res) => {
 });
 
 // Upload profile picture
-router.post('/profile/upload-picture', authenticateToken, upload.single('profilePicture'), async (req, res) => {
+router.post('/profile/upload-picture', authenticateToken, async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    const { filename, fileData, mimeType } = req.body;
+    
+    console.log('Profile picture upload attempt for user:', req.user.id);
+    console.log('Filename:', filename);
+    console.log('MimeType:', mimeType);
+    
+    if (!filename || !fileData) {
+      return res.status(400).json({ error: 'Filename and file data are required' });
     }
 
     if (!supabase) {
       return res.status(500).json({ error: 'Database not available' });
     }
 
-    const profilePictureUrl = `/uploads/${req.file.filename}`;
+    // Create service role client for file upload
+    const serviceSupabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Convert base64 to buffer
+    const buffer = Buffer.from(fileData, 'base64');
+    
+    // Generate unique file path
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 8);
+    const fileExtension = filename.split('.').pop();
+    const storagePath = `profile-pictures/${req.user.id}/${timestamp}-${randomString}.${fileExtension}`;
+
+    // Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await serviceSupabase.storage
+      .from('profile-pictures')
+      .upload(storagePath, buffer, {
+        contentType: mimeType || 'image/jpeg',
+        duplex: 'half'
+      });
+
+    if (uploadError) {
+      console.error('Error uploading to Supabase Storage:', uploadError);
+      return res.status(500).json({ error: 'Failed to upload profile picture to storage' });
+    }
+
+    // Get public URL
+    const { data: { publicUrl } } = serviceSupabase.storage
+      .from('profile-pictures')
+      .getPublicUrl(storagePath);
+
+    console.log('Profile picture uploaded successfully to:', publicUrl);
 
     // Update user's profile picture in database
     const { data: user, error } = await supabase
       .from('users')
-      .update({ profile_picture: profilePictureUrl })
+      .update({ profile_picture: publicUrl })
       .eq('id', req.user.id)
       .select('id, username, email, bio, profile_picture, created_at')
       .single();
 
     if (error) {
-      console.error('Error updating profile picture:', error);
-      // Delete the uploaded file if database update fails
-      fs.unlinkSync(req.file.path);
+      console.error('Error updating profile picture in database:', error);
+      // Try to delete the uploaded file if database update fails
+      await serviceSupabase.storage
+        .from('profile-pictures')
+        .remove([storagePath]);
       return res.status(500).json({ error: 'Failed to update profile picture' });
     }
 
@@ -127,10 +144,6 @@ router.post('/profile/upload-picture', authenticateToken, upload.single('profile
     });
   } catch (error) {
     console.error('Error in profile picture upload route:', error);
-    // Delete the uploaded file if there's an error
-    if (req.file) {
-      fs.unlinkSync(req.file.path);
-    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -70,7 +70,21 @@ router.get('/group/:groupId', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch projects' });
     }
 
-    res.json({ projects });
+    // Sort projects by priority (urgent > high > medium > low) then by created_at
+    const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 };
+    const sortedProjects = projects?.sort((a, b) => {
+      const aPriority = priorityOrder[a.priority as keyof typeof priorityOrder] || 2;
+      const bPriority = priorityOrder[b.priority as keyof typeof priorityOrder] || 2;
+      
+      if (aPriority !== bPriority) {
+        return bPriority - aPriority; // Higher priority first
+      }
+      
+      // If same priority, sort by created_at (newer first)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }) || [];
+
+    res.json({ projects: sortedProjects });
   } catch (error) {
     console.error('Error in projects route:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -177,7 +191,7 @@ router.get('/:projectId', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Verify user is a member of the group
+    // Verify user is a member of the group (for viewing project details)
     const { data: membership, error: membershipError } = await supabase
       .from('group_memberships')
       .select('*')
@@ -190,20 +204,21 @@ router.get('/:projectId', authenticateToken, async (req, res) => {
     }
 
     // Get project assignments
-    const { data: assignments, error: assignmentError } = await supabase
+    const { data: assignments, error: assignmentError2 } = await supabase
       .from('project_assignments')
       .select(`
         *,
         users!project_assignments_user_id_fkey (
           id,
           username,
-          email
+          email,
+          profile_picture
         )
       `)
       .eq('project_id', projectId);
 
-    if (assignmentError) {
-      console.error('Error fetching assignments:', assignmentError);
+    if (assignmentError2) {
+      console.error('Error fetching assignments:', assignmentError2);
     }
 
     // Get checklist items
@@ -259,16 +274,16 @@ router.put('/:projectId', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Verify user is a member of the group
-    const { data: membership, error: membershipError } = await supabase
-      .from('group_memberships')
+    // Verify user is a member of this specific project
+    const { data: projectAssignment, error: assignmentError } = await supabase
+      .from('project_assignments')
       .select('*')
-      .eq('group_id', project.group_id)
+      .eq('project_id', projectId)
       .eq('user_id', req.user.id)
       .single();
 
-    if (membershipError || !membership) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (assignmentError || !projectAssignment) {
+      return res.status(403).json({ error: 'Access denied - you must be a project member to edit this project' });
     }
 
     // Update project
@@ -327,16 +342,16 @@ router.post('/:projectId/checklist', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Verify user is a member of the group
-    const { data: membership, error: membershipError } = await supabase
-      .from('group_memberships')
+    // Verify user is a member of this specific project
+    const { data: projectAssignment, error: assignmentError } = await supabase
+      .from('project_assignments')
       .select('*')
-      .eq('group_id', project.group_id)
+      .eq('project_id', projectId)
       .eq('user_id', req.user.id)
       .single();
 
-    if (membershipError || !membership) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (assignmentError || !projectAssignment) {
+      return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
     }
 
     // Create checklist item
@@ -392,16 +407,16 @@ router.put('/:projectId/checklist/:itemId', authenticateToken, async (req, res) 
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Verify user is a member of the group
-    const { data: membership, error: membershipError } = await supabase
-      .from('group_memberships')
+    // Verify user is a member of this specific project
+    const { data: projectAssignment, error: assignmentError } = await supabase
+      .from('project_assignments')
       .select('*')
-      .eq('group_id', project.group_id)
+      .eq('project_id', projectId)
       .eq('user_id', req.user.id)
       .single();
 
-    if (membershipError || !membership) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (assignmentError || !projectAssignment) {
+      return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
     }
 
     // Update checklist item
@@ -452,16 +467,16 @@ router.delete('/:projectId/checklist/:itemId', authenticateToken, async (req, re
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Verify user is a member of the group
-    const { data: membership, error: membershipError } = await supabase
-      .from('group_memberships')
+    // Verify user is a member of this specific project
+    const { data: projectAssignment, error: assignmentError } = await supabase
+      .from('project_assignments')
       .select('*')
-      .eq('group_id', project.group_id)
+      .eq('project_id', projectId)
       .eq('user_id', req.user.id)
       .single();
 
-    if (membershipError || !membership) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (assignmentError || !projectAssignment) {
+      return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
     }
 
     // Delete checklist item
@@ -556,16 +571,16 @@ router.post('/:projectId/assign', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Verify user is a member of the group
-    const { data: membership, error: membershipError } = await supabase
-      .from('group_memberships')
+    // Verify user is a member of this specific project
+    const { data: projectAssignment, error: assignmentError } = await supabase
+      .from('project_assignments')
       .select('*')
-      .eq('group_id', project.group_id)
+      .eq('project_id', projectId)
       .eq('user_id', req.user.id)
       .single();
 
-    if (membershipError || !membership) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (assignmentError || !projectAssignment) {
+      return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
     }
 
     // Check if user being assigned is also a member of the group
@@ -593,7 +608,7 @@ router.post('/:projectId/assign', authenticateToken, async (req, res) => {
     }
 
     // Create assignment
-    const { data: assignment, error: assignmentError } = await supabase
+    const { data: assignment, error: createAssignmentError } = await supabase
       .from('project_assignments')
       .insert([
         {
@@ -604,8 +619,8 @@ router.post('/:projectId/assign', authenticateToken, async (req, res) => {
       .select()
       .single();
 
-    if (assignmentError) {
-      console.error('Error creating assignment:', assignmentError);
+    if (createAssignmentError) {
+      console.error('Error creating assignment:', createAssignmentError);
       return res.status(500).json({ error: 'Failed to assign user to project' });
     }
 
@@ -649,16 +664,16 @@ router.post('/:projectId/files', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Verify user is a member of the group
-    const { data: membership, error: membershipError } = await supabase
-      .from('group_memberships')
+    // Verify user is a member of this specific project
+    const { data: projectAssignment, error: assignmentError } = await supabase
+      .from('project_assignments')
       .select('*')
-      .eq('group_id', project.group_id)
+      .eq('project_id', projectId)
       .eq('user_id', req.user.id)
       .single();
 
-    if (membershipError || !membership) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (assignmentError || !projectAssignment) {
+      return res.status(403).json({ error: 'Access denied - you must be a project member to upload files' });
     }
 
     // Convert base64 to buffer
@@ -752,7 +767,7 @@ router.get('/:projectId/files', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Verify user is a member of the group
+    // Verify user is a member of the group (for viewing files)
     const { data: membership, error: membershipError } = await supabase
       .from('group_memberships')
       .select('*')
@@ -802,8 +817,8 @@ router.get('/:projectId/files', authenticateToken, async (req, res) => {
         .eq('project_id', projectId);
 
       // Apply sorting only if we have data
-      const validSortFields = ['filename', 'file_size', 'mime_type'];
-      let sortField = validSortFields.includes(sortBy as string) ? sortBy as string : 'filename';
+      const validSortFields = ['filename', 'file_size', 'mime_type', 'created_at'];
+      let sortField = validSortFields.includes(sortBy as string) ? sortBy as string : 'created_at';
       
       const order = sortOrder === 'asc' ? 'asc' : 'desc';
       query = query.order(sortField, { ascending: order === 'asc' });
@@ -894,16 +909,16 @@ router.delete('/:projectId/files/:fileId', authenticateToken, async (req, res) =
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Verify user is a member of the group
-    const { data: membership, error: membershipError } = await supabase
-      .from('group_memberships')
+    // Verify user is a member of this specific project
+    const { data: projectAssignment, error: assignmentError } = await supabase
+      .from('project_assignments')
       .select('*')
-      .eq('group_id', fileRecord.projects.group_id)
+      .eq('project_id', projectId)
       .eq('user_id', req.user.id)
       .single();
 
-    if (membershipError || !membership) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (assignmentError || !projectAssignment) {
+      return res.status(403).json({ error: 'Access denied - you must be a project member to delete files' });
     }
 
     // Delete from Supabase Storage
@@ -936,6 +951,74 @@ router.delete('/:projectId/files/:fileId', authenticateToken, async (req, res) =
   }
 });
 
+// Remove user from project
+router.delete('/:projectId/assign/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { projectId, userId } = req.params;
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    // Get project to verify access
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Verify user is a member of this specific project (to manage other members)
+    const { data: projectAssignment, error: assignmentError } = await supabase
+      .from('project_assignments')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (assignmentError || !projectAssignment) {
+      return res.status(403).json({ error: 'Access denied - you must be a project member to manage project members' });
+    }
+
+    // Prevent removing the project creator if they are the only member
+    const { data: allAssignments, error: allAssignmentsError } = await supabase
+      .from('project_assignments')
+      .select('*')
+      .eq('project_id', projectId);
+
+    if (allAssignmentsError) {
+      console.error('Error fetching all assignments:', allAssignmentsError);
+      return res.status(500).json({ error: 'Failed to check project assignments' });
+    }
+
+    if (allAssignments.length === 1 && project.created_by === userId) {
+      return res.status(400).json({ error: 'Cannot remove the project creator when they are the only member' });
+    }
+
+    // Remove assignment
+    const { error: deleteError } = await supabase
+      .from('project_assignments')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('user_id', userId);
+
+    if (deleteError) {
+      console.error('Error removing assignment:', deleteError);
+      return res.status(500).json({ error: 'Failed to remove user from project' });
+    }
+
+    res.json({
+      message: 'User removed from project successfully'
+    });
+  } catch (error) {
+    console.error('Error in remove user route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Delete project
 router.delete('/:projectId', authenticateToken, async (req, res) => {
   try {
@@ -956,16 +1039,16 @@ router.delete('/:projectId', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Verify user is a member of the group
-    const { data: membership, error: membershipError } = await supabase
-      .from('group_memberships')
+    // Verify user is a member of this specific project
+    const { data: projectAssignment, error: assignmentError } = await supabase
+      .from('project_assignments')
       .select('*')
-      .eq('group_id', project.group_id)
+      .eq('project_id', projectId)
       .eq('user_id', req.user.id)
       .single();
 
-    if (membershipError || !membership) {
-      return res.status(403).json({ error: 'Access denied' });
+    if (assignmentError || !projectAssignment) {
+      return res.status(403).json({ error: 'Access denied - you must be a project member to modify checklist items' });
     }
 
     // Delete related data first (cascade delete)

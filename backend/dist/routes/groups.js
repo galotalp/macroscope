@@ -14,7 +14,7 @@ const getUserInfo = async (userId) => {
         throw new Error('Database not available');
     const { data: user, error } = await database_1.supabase
         .from('users')
-        .select('username, email')
+        .select('username, email, profile_picture')
         .eq('id', userId)
         .single();
     if (error)
@@ -196,6 +196,7 @@ router.post('/:groupId/request-join', auth_1.authenticateToken, async (req, res)
             userId: req.user.id,
             username: userInfo.username,
             email: userInfo.email,
+            profile_picture: userInfo.profile_picture,
             status: 'pending',
             requestedAt: new Date()
         };
@@ -256,9 +257,10 @@ router.get('/:groupId/details', auth_1.authenticateToken, async (req, res) => {
             .eq('group_id', groupId)
             .eq('user_id', req.user.id)
             .single();
-        if (membershipError || !membership || membership.role !== 'admin') {
-            return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
+        if (membershipError || !membership) {
+            return res.status(403).json({ error: 'Access denied. You must be a member of this group.' });
         }
+        const isAdmin = membership.role === 'admin';
         const { data: group, error: groupError } = await database_1.supabase
             .from('groups')
             .select('*')
@@ -276,7 +278,8 @@ router.get('/:groupId/details', auth_1.authenticateToken, async (req, res) => {
         users (
           id,
           username,
-          email
+          email,
+          profile_picture
         )
       `)
             .eq('group_id', groupId);
@@ -284,20 +287,22 @@ router.get('/:groupId/details', auth_1.authenticateToken, async (req, res) => {
             console.error('Error fetching members:', membersError);
             return res.status(500).json({ error: 'Failed to fetch members' });
         }
-        const pendingRequests = joinRequests.filter(r => r.groupId === groupId && r.status === 'pending');
+        const pendingRequests = isAdmin ? joinRequests.filter(r => r.groupId === groupId && r.status === 'pending') : [];
         res.json({
             group: Object.assign(Object.assign({}, group), { invite_code: `TMP-${group.id.substring(0, 8)}` }),
             members,
-            joinRequests: pendingRequests.map(r => ({
+            joinRequests: isAdmin ? pendingRequests.map(r => ({
                 id: r.id,
                 status: r.status,
                 requested_at: r.requestedAt.toISOString(),
                 users: {
                     id: r.userId,
                     username: r.username,
-                    email: r.email
+                    email: r.email,
+                    profile_picture: r.profile_picture
                 }
-            }))
+            })) : [],
+            isAdmin
         });
     }
     catch (error) {
@@ -425,6 +430,41 @@ router.post('/:groupId/join-requests/:requestId/:action', auth_1.authenticateTok
     }
     catch (error) {
         console.error('Error in join request action route:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+router.get('/pending-requests-count', auth_1.authenticateToken, async (req, res) => {
+    try {
+        if (!database_1.supabase) {
+            return res.status(500).json({ error: 'Database not available' });
+        }
+        const { data: adminGroups, error: groupsError } = await database_1.supabase
+            .from('group_memberships')
+            .select('group_id, groups!group_memberships_group_id_fkey(id, name)')
+            .eq('user_id', req.user.id)
+            .eq('role', 'admin');
+        if (groupsError) {
+            console.error('Error fetching admin groups:', groupsError);
+            return res.status(500).json({ error: 'Failed to fetch groups' });
+        }
+        const groupCounts = (adminGroups || []).map(membership => {
+            var _a;
+            const groupId = membership.group_id;
+            const pendingCount = joinRequests.filter(r => r.groupId === groupId && r.status === 'pending').length;
+            return {
+                groupId,
+                groupName: ((_a = membership.groups) === null || _a === void 0 ? void 0 : _a.name) || 'Unknown Group',
+                pendingRequestsCount: pendingCount
+            };
+        });
+        const totalPendingRequests = groupCounts.reduce((sum, group) => sum + group.pendingRequestsCount, 0);
+        res.json({
+            totalPendingRequests,
+            groupCounts
+        });
+    }
+    catch (error) {
+        console.error('Error in pending requests count route:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });

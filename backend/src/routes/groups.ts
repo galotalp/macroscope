@@ -11,6 +11,7 @@ interface JoinRequest {
   userId: string;
   username: string;
   email: string;
+  profile_picture?: string;
   status: 'pending' | 'approved' | 'rejected';
   requestedAt: Date;
   respondedAt?: Date;
@@ -28,7 +29,7 @@ const getUserInfo = async (userId: string) => {
   
   const { data: user, error } = await supabase
     .from('users')
-    .select('username, email')
+    .select('username, email, profile_picture')
     .eq('id', userId)
     .single();
   
@@ -269,6 +270,7 @@ router.post('/:groupId/request-join', authenticateToken, async (req, res) => {
       userId: req.user.id,
       username: userInfo.username,
       email: userInfo.email,
+      profile_picture: userInfo.profile_picture,
       status: 'pending',
       requestedAt: new Date()
     };
@@ -344,7 +346,7 @@ router.get('/:groupId/details', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Database not available' });
     }
 
-    // Check if user is admin of the group
+    // Check if user is a member of the group
     const { data: membership, error: membershipError } = await supabase
       .from('group_memberships')
       .select('role')
@@ -352,9 +354,11 @@ router.get('/:groupId/details', authenticateToken, async (req, res) => {
       .eq('user_id', req.user.id)
       .single();
 
-    if (membershipError || !membership || membership.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied. Admin privileges required.' });
+    if (membershipError || !membership) {
+      return res.status(403).json({ error: 'Access denied. You must be a member of this group.' });
     }
+
+    const isAdmin = membership.role === 'admin';
 
     // Get group details
     const { data: group, error: groupError } = await supabase
@@ -377,7 +381,8 @@ router.get('/:groupId/details', authenticateToken, async (req, res) => {
         users (
           id,
           username,
-          email
+          email,
+          profile_picture
         )
       `)
       .eq('group_id', groupId);
@@ -387,10 +392,10 @@ router.get('/:groupId/details', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch members' });
     }
 
-    // Get pending join requests for this group
-    const pendingRequests = joinRequests.filter(
+    // Get pending join requests for this group (only if user is admin)
+    const pendingRequests = isAdmin ? joinRequests.filter(
       r => r.groupId === groupId && r.status === 'pending'
-    );
+    ) : [];
 
     res.json({
       group: {
@@ -398,16 +403,18 @@ router.get('/:groupId/details', authenticateToken, async (req, res) => {
         invite_code: `TMP-${group.id.substring(0, 8)}`
       },
       members,
-      joinRequests: pendingRequests.map(r => ({
+      joinRequests: isAdmin ? pendingRequests.map(r => ({
         id: r.id,
         status: r.status,
         requested_at: r.requestedAt.toISOString(),
         users: {
           id: r.userId,
           username: r.username,
-          email: r.email
+          email: r.email,
+          profile_picture: r.profile_picture
         }
-      }))
+      })) : [],
+      isAdmin // Include admin status for frontend to conditionally show admin features
     });
   } catch (error) {
     console.error('Error in group details route:', error);
@@ -574,6 +581,52 @@ router.post('/:groupId/join-requests/:requestId/:action', authenticateToken, asy
     });
   } catch (error) {
     console.error('Error in join request action route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get pending join request counts for groups where user is admin
+router.get('/pending-requests-count', authenticateToken, async (req, res) => {
+  try {
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    // Get groups where user is admin
+    const { data: adminGroups, error: groupsError } = await supabase
+      .from('group_memberships')
+      .select('group_id, groups!group_memberships_group_id_fkey(id, name)')
+      .eq('user_id', req.user.id)
+      .eq('role', 'admin');
+
+    if (groupsError) {
+      console.error('Error fetching admin groups:', groupsError);
+      return res.status(500).json({ error: 'Failed to fetch groups' });
+    }
+
+    // Count pending requests for each group
+    const groupCounts = (adminGroups || []).map(membership => {
+      const groupId = membership.group_id;
+      const pendingCount = joinRequests.filter(
+        r => r.groupId === groupId && r.status === 'pending'
+      ).length;
+      
+      return {
+        groupId,
+        groupName: (membership.groups as any)?.name || 'Unknown Group',
+        pendingRequestsCount: pendingCount
+      };
+    });
+
+    // Calculate total pending requests
+    const totalPendingRequests = groupCounts.reduce((sum, group) => sum + group.pendingRequestsCount, 0);
+
+    res.json({
+      totalPendingRequests,
+      groupCounts
+    });
+  } catch (error) {
+    console.error('Error in pending requests count route:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

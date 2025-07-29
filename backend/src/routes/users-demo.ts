@@ -95,6 +95,10 @@ router.put('/profile', authenticateToken, async (req, res) => {
 // Upload profile picture
 router.post('/profile/upload-picture', authenticateToken, upload.single('profilePicture'), async (req, res) => {
   try {
+    console.log('🚨 DEMO USERS ROUTE HIT! (This should not happen) 🚨');
+    console.log('Request body:', req.body);
+    console.log('Request file:', req.file);
+    
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
