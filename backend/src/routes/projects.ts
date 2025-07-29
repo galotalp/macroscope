@@ -1,8 +1,42 @@
 import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 import { supabase } from '../config/database';
 import { authenticateToken } from '../middleware/auth';
 
 const router = express.Router();
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, '../../uploads/project-files');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    // Allow most common file types
+    const allowedTypes = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|png|jpg|jpeg|gif|mp4|mov|avi)$/i;
+    if (allowedTypes.test(file.originalname)) {
+      cb(null, true);
+    } else {
+      cb(new Error('File type not allowed'));
+    }
+  }
+});
 
 // Get projects for a group
 router.get('/group/:groupId', authenticateToken, async (req, res) => {
@@ -111,29 +145,7 @@ router.post('/', authenticateToken, async (req, res) => {
       }
     }
 
-    // Create default checklist items
-    const defaultItems = [
-      { title: 'Manuscript written', description: 'Complete the manuscript draft' },
-      { title: 'Ethics submitted', description: 'Submit ethics application' },
-      { title: 'Ethics approved', description: 'Receive ethics approval' },
-      { title: 'Manuscript submitted', description: 'Submit manuscript to journal' }
-    ];
-
-    const checklistInserts = defaultItems.map(item => ({
-      project_id: project.id,
-      title: item.title,
-      description: item.description,
-      created_by: req.user.id
-    }));
-
-    const { error: checklistError } = await supabase
-      .from('checklist_items')
-      .insert(checklistInserts);
-
-    if (checklistError) {
-      console.error('Error creating checklist items:', checklistError);
-      // Don't fail the project creation, just log the error
-    }
+    // Checklist items will be added separately via the frontend
 
     res.status(201).json({
       message: 'Project created successfully',
@@ -181,7 +193,8 @@ router.get('/:projectId', authenticateToken, async (req, res) => {
     const { data: assignments, error: assignmentError } = await supabase
       .from('project_assignments')
       .select(`
-        users (
+        *,
+        users!project_assignments_user_id_fkey (
           id,
           username,
           email
@@ -293,6 +306,8 @@ router.post('/:projectId/checklist', authenticateToken, async (req, res) => {
     const { projectId } = req.params;
     const { title, description } = req.body;
 
+    console.log('Adding checklist item:', { projectId, title, description });
+
     if (!title) {
       return res.status(400).json({ error: 'Title is required' });
     }
@@ -343,6 +358,8 @@ router.post('/:projectId/checklist', authenticateToken, async (req, res) => {
       console.error('Error details:', JSON.stringify(insertError, null, 2));
       return res.status(500).json({ error: 'Failed to create checklist item', details: insertError.message });
     }
+
+    console.log('Checklist item created successfully:', item);
 
     res.status(201).json({
       message: 'Checklist item created successfully',
@@ -488,7 +505,7 @@ router.get('/group/:groupId/members', authenticateToken, async (req, res) => {
     }
 
     // Get group members
-    const { data: members, error: membersError } = await supabase
+    const { data: memberships, error: membersError } = await supabase
       .from('group_memberships')
       .select(`
         users (
@@ -503,6 +520,9 @@ router.get('/group/:groupId/members', authenticateToken, async (req, res) => {
       console.error('Error fetching group members:', membersError);
       return res.status(500).json({ error: 'Failed to fetch group members' });
     }
+
+    // Extract just the user objects from the memberships
+    const members = memberships?.map(m => m.users).filter(Boolean) || [];
 
     res.json({ members });
   } catch (error) {
@@ -595,6 +615,384 @@ router.post('/:projectId/assign', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Error in assign user route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Upload file to project using Supabase Storage
+router.post('/:projectId/files', authenticateToken, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { filename, fileData, mimeType, fileSize } = req.body;
+    
+    console.log('File upload attempt for project:', projectId);
+    console.log('Filename:', filename);
+    console.log('MimeType:', mimeType);
+    console.log('FileSize:', fileSize);
+    
+    if (!filename || !fileData) {
+      return res.status(400).json({ error: 'Filename and file data are required' });
+    }
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    // Get project to verify access
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Verify user is a member of the group
+    const { data: membership, error: membershipError } = await supabase
+      .from('group_memberships')
+      .select('*')
+      .eq('group_id', project.group_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (membershipError || !membership) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Convert base64 to buffer
+    const buffer = Buffer.from(fileData, 'base64');
+    
+    // Create unique filename
+    const timestamp = Date.now();
+    const uniqueFilename = `${timestamp}-${filename}`;
+    const storagePath = `project-files/${projectId}/${uniqueFilename}`;
+
+    // Upload to Supabase Storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('project-files')
+      .upload(storagePath, buffer, {
+        contentType: mimeType || 'application/octet-stream',
+        duplex: 'half'
+      });
+
+    if (uploadError) {
+      console.error('Error uploading to Supabase Storage:', uploadError);
+      return res.status(500).json({ error: 'Failed to upload file to storage' });
+    }
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('project-files')
+      .getPublicUrl(storagePath);
+
+    // Save file info to database
+    const { data: fileRecord, error: fileError } = await supabase
+      .from('project_files')
+      .insert([
+        {
+          project_id: projectId,
+          filename: filename,
+          storage_path: storagePath,
+          public_url: publicUrl,
+          file_size: fileSize || buffer.length,
+          mime_type: mimeType || 'application/octet-stream',
+          uploaded_by: req.user.id
+        }
+      ])
+      .select()
+      .single();
+
+    if (fileError) {
+      console.error('Error saving file record:', fileError);
+      // Clean up uploaded file if database insert fails
+      await supabase.storage.from('project-files').remove([storagePath]);
+      return res.status(500).json({ error: 'Failed to save file record' });
+    }
+
+    console.log('File uploaded successfully to Supabase Storage');
+
+    res.status(201).json({
+      message: 'File uploaded successfully',
+      file: fileRecord
+    });
+  } catch (error) {
+    console.error('Error in file upload route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get files for a project
+router.get('/:projectId/files', authenticateToken, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { sortBy = 'created_at', sortOrder = 'desc' } = req.query;
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    // Get project to verify access
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Verify user is a member of the group
+    const { data: membership, error: membershipError } = await supabase
+      .from('group_memberships')
+      .select('*')
+      .eq('group_id', project.group_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (membershipError || !membership) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get files with uploader info
+    try {
+      let query = supabase
+        .from('project_files')
+        .select('*')
+        .eq('project_id', projectId);
+
+      // Try to get files first without joining to see if table exists
+      const { data: files, error: filesError } = await query;
+
+      if (filesError) {
+        console.error('Error fetching files:', filesError);
+        // If table doesn't exist, return empty array
+        if (filesError.code === '42P01' || filesError.message?.includes('does not exist')) {
+          return res.json({ files: [] });
+        }
+        return res.status(500).json({ error: 'Failed to fetch files' });
+      }
+
+      // If no files, return empty array
+      if (!files || files.length === 0) {
+        return res.json({ files: [] });
+      }
+
+      // Now try to get files with user info and apply sorting
+      query = supabase
+        .from('project_files')
+        .select(`
+          *,
+          users!project_files_uploaded_by_fkey (
+            id,
+            username,
+            email
+          )
+        `)
+        .eq('project_id', projectId);
+
+      // Apply sorting only if we have data
+      const validSortFields = ['filename', 'file_size', 'mime_type'];
+      let sortField = validSortFields.includes(sortBy as string) ? sortBy as string : 'filename';
+      
+      const order = sortOrder === 'asc' ? 'asc' : 'desc';
+      query = query.order(sortField, { ascending: order === 'asc' });
+
+      const { data: filesWithUsers, error: joinError } = await query;
+
+      if (joinError) {
+        console.error('Error fetching files with user info:', joinError);
+        // Fallback to files without user info
+        res.json({ files });
+      } else {
+        res.json({ files: filesWithUsers });
+      }
+
+    } catch (error) {
+      console.error('Error in files query:', error);
+      res.json({ files: [] });
+    }
+  } catch (error) {
+    console.error('Error in get files route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Download file from Supabase Storage
+router.get('/:projectId/files/:fileId/download', authenticateToken, async (req, res) => {
+  try {
+    const { projectId, fileId } = req.params;
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    // Get file record
+    const { data: fileRecord, error: fileError } = await supabase
+      .from('project_files')
+      .select('*, projects!project_files_project_id_fkey(group_id)')
+      .eq('id', fileId)
+      .eq('project_id', projectId)
+      .single();
+
+    if (fileError || !fileRecord) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Verify user is a member of the group
+    const { data: membership, error: membershipError } = await supabase
+      .from('group_memberships')
+      .select('*')
+      .eq('group_id', fileRecord.projects.group_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (membershipError || !membership) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Return the public URL for download
+    res.json({ 
+      downloadUrl: fileRecord.public_url,
+      filename: fileRecord.filename,
+      mimeType: fileRecord.mime_type
+    });
+  } catch (error) {
+    console.error('Error in file download route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete file from Supabase Storage
+router.delete('/:projectId/files/:fileId', authenticateToken, async (req, res) => {
+  try {
+    const { projectId, fileId } = req.params;
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    // Get file record
+    const { data: fileRecord, error: fileError } = await supabase
+      .from('project_files')
+      .select('*, projects!project_files_project_id_fkey(group_id)')
+      .eq('id', fileId)
+      .eq('project_id', projectId)
+      .single();
+
+    if (fileError || !fileRecord) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Verify user is a member of the group
+    const { data: membership, error: membershipError } = await supabase
+      .from('group_memberships')
+      .select('*')
+      .eq('group_id', fileRecord.projects.group_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (membershipError || !membership) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Delete from Supabase Storage
+    if (fileRecord.storage_path) {
+      const { error: storageError } = await supabase.storage
+        .from('project-files')
+        .remove([fileRecord.storage_path]);
+
+      if (storageError) {
+        console.error('Error deleting file from storage:', storageError);
+        // Continue with database deletion even if storage delete fails
+      }
+    }
+
+    // Delete from database
+    const { error: deleteError } = await supabase
+      .from('project_files')
+      .delete()
+      .eq('id', fileId);
+
+    if (deleteError) {
+      console.error('Error deleting file record:', deleteError);
+      return res.status(500).json({ error: 'Failed to delete file record' });
+    }
+
+    res.json({ message: 'File deleted successfully' });
+  } catch (error) {
+    console.error('Error in file delete route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete project
+router.delete('/:projectId', authenticateToken, async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    // Get project to verify access
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Verify user is a member of the group
+    const { data: membership, error: membershipError } = await supabase
+      .from('group_memberships')
+      .select('*')
+      .eq('group_id', project.group_id)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (membershipError || !membership) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Delete related data first (cascade delete)
+    // Delete checklist items
+    await supabase
+      .from('checklist_items')
+      .delete()
+      .eq('project_id', projectId);
+
+    // Delete project assignments
+    await supabase
+      .from('project_assignments')
+      .delete()
+      .eq('project_id', projectId);
+
+    // Delete project files (if any)
+    await supabase
+      .from('project_files')
+      .delete()
+      .eq('project_id', projectId);
+
+    // Delete the project
+    const { error: deleteError } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', projectId);
+
+    if (deleteError) {
+      console.error('Error deleting project:', deleteError);
+      return res.status(500).json({ error: 'Failed to delete project' });
+    }
+
+    res.json({ message: 'Project deleted successfully' });
+  } catch (error) {
+    console.error('Error in delete project route:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

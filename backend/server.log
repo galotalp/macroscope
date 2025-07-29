@@ -1,0 +1,35 @@
+
+> backend@1.0.0 start
+> node dist/index.js
+
+[dotenv@17.2.0] injecting env (4) from .env (tip: 🔐 encrypt with dotenvx: https://dotenvx.com)
+🗄️  Connected to Supabase database
+[dotenv@17.2.0] injecting env (0) from .env (tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] })
+Routes imported successfully
+🗄️  Using Supabase routes (full database functionality)
+Registering auth routes...
+Registering users routes...
+Users routes mounted at /api/users
+Registering groups routes...
+Registering projects routes...
+(node:79519) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Server is running on port 3000
+File upload attempt for project: f882ae14-e149-4672-8407-c661862e644b
+Filename: Banana-Single.jpg
+MimeType: image/jpeg
+FileSize: 2085213
+Error uploading to Supabase Storage: {
+  statusCode: '403',
+  error: 'Unauthorized',
+  message: 'new row violates row-level security policy'
+}
+File upload attempt for project: f882ae14-e149-4672-8407-c661862e644b
+Filename: Banana-Single.jpg
+MimeType: image/jpeg
+FileSize: 2085213
+Error uploading to Supabase Storage: {
+  statusCode: '403',
+  error: 'Unauthorized',
+  message: 'new row violates row-level security policy'
+}
