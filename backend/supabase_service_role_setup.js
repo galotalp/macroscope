@@ -1,14 +1,16 @@
+// BACKEND UPDATE: Use Service Role for Database Operations
+// Add this to your database.ts or create a new file
+
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Check if we have Supabase credentials
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Check if credentials are properly set (not placeholders or empty)
+// Check if we have Supabase credentials
 const isValidUrl = supabaseUrl && 
                   supabaseUrl.trim() !== '' &&
                   supabaseUrl !== 'your-supabase-url-here' && 
@@ -27,23 +29,27 @@ const isValidServiceKey = supabaseServiceKey &&
 
 export const isDemoMode = !isValidUrl || !isValidAnonKey || !isValidServiceKey;
 
-// Backend client using service role (bypasses RLS for your API)
-export const supabase = isDemoMode ? null : createClient(supabaseUrl!, supabaseServiceKey!);
+// Client for regular operations (with RLS)
+export const supabase = isDemoMode ? null : createClient(supabaseUrl!, supabaseAnonKey!);
 
-// Optional: Keep anon client for any client-side operations (if needed)
-export const supabaseAnon = isDemoMode ? null : createClient(supabaseUrl!, supabaseAnonKey!);
+// Service role client for backend operations (bypasses RLS)
+export const supabaseAdmin = isDemoMode ? null : createClient(supabaseUrl!, supabaseServiceKey!);
+
+// Helper function to create a client with user context for RLS
+export const createUserClient = (userToken) => {
+  if (isDemoMode || !supabaseUrl || !supabaseAnonKey) return null;
+  
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${userToken}`
+      }
+    }
+  });
+};
 
 if (isDemoMode) {
   console.log('🔧 Running in demo mode - no valid Supabase credentials found');
-  if (supabaseUrl && supabaseUrl !== 'your-supabase-url-here') {
-    console.log('   Supabase URL format appears invalid:', supabaseUrl);
-  }
-  if (!isValidAnonKey && supabaseAnonKey && supabaseAnonKey !== 'your-supabase-anon-key-here') {
-    console.log('   Supabase anon key format appears invalid');
-  }
-  if (!isValidServiceKey) {
-    console.log('   Supabase service role key missing or invalid');
-  }
 } else {
   console.log('🗄️  Connected to Supabase database with service role');
 }
