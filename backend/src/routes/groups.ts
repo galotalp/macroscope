@@ -477,6 +477,63 @@ router.delete('/:groupId/members/:userId', authenticateToken, async (req, res) =
   }
 });
 
+// Update group (only admin/creator can update)
+router.put('/:groupId', authenticateToken, async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { name, description } = req.body;
+
+    if (!supabase) {
+      return res.status(500).json({ error: 'Database not available' });
+    }
+
+    // Validate input
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Group name is required' });
+    }
+
+    // Check if user is admin or creator of the group
+    const { data: membership, error: membershipError } = await supabase
+      .from('group_memberships')
+      .select('role')
+      .eq('group_id', groupId)
+      .eq('user_id', req.user.id)
+      .single();
+
+    if (membershipError || !membership) {
+      return res.status(403).json({ error: 'Access denied. You are not a member of this group.' });
+    }
+
+    if (membership.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied. Only group admins can edit group details.' });
+    }
+
+    // Update the group
+    const { data: updatedGroup, error: updateError } = await supabase
+      .from('groups')
+      .update({
+        name: name.trim(),
+        description: description?.trim() || null
+      })
+      .eq('id', groupId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating group:', updateError);
+      return res.status(500).json({ error: 'Failed to update group' });
+    }
+
+    res.json({ 
+      message: 'Group updated successfully', 
+      group: updatedGroup 
+    });
+  } catch (error) {
+    console.error('Error in update group route:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Delete group (only creator can delete)
 router.delete('/:groupId', authenticateToken, async (req, res) => {
   try {

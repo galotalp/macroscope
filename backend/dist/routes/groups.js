@@ -352,6 +352,51 @@ router.delete('/:groupId/members/:userId', auth_1.authenticateToken, async (req,
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+router.put('/:groupId', auth_1.authenticateToken, async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        const { name, description } = req.body;
+        if (!database_1.supabase) {
+            return res.status(500).json({ error: 'Database not available' });
+        }
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Group name is required' });
+        }
+        const { data: membership, error: membershipError } = await database_1.supabase
+            .from('group_memberships')
+            .select('role')
+            .eq('group_id', groupId)
+            .eq('user_id', req.user.id)
+            .single();
+        if (membershipError || !membership) {
+            return res.status(403).json({ error: 'Access denied. You are not a member of this group.' });
+        }
+        if (membership.role !== 'admin') {
+            return res.status(403).json({ error: 'Access denied. Only group admins can edit group details.' });
+        }
+        const { data: updatedGroup, error: updateError } = await database_1.supabase
+            .from('groups')
+            .update({
+            name: name.trim(),
+            description: (description === null || description === void 0 ? void 0 : description.trim()) || null
+        })
+            .eq('id', groupId)
+            .select()
+            .single();
+        if (updateError) {
+            console.error('Error updating group:', updateError);
+            return res.status(500).json({ error: 'Failed to update group' });
+        }
+        res.json({
+            message: 'Group updated successfully',
+            group: updatedGroup
+        });
+    }
+    catch (error) {
+        console.error('Error in update group route:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 router.delete('/:groupId', auth_1.authenticateToken, async (req, res) => {
     try {
         const { groupId } = req.params;

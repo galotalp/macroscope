@@ -779,59 +779,55 @@ router.get('/:projectId/files', authenticateToken, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Get files with uploader info
+    // Get files with uploader info - simplified approach
     try {
-      let query = supabase
-        .from('project_files')
-        .select('*')
-        .eq('project_id', projectId);
-
-      // Try to get files first without joining to see if table exists
-      const { data: files, error: filesError } = await query;
-
-      if (filesError) {
-        console.error('Error fetching files:', filesError);
-        // If table doesn't exist, return empty array
-        if (filesError.code === '42P01' || filesError.message?.includes('does not exist')) {
-          return res.json({ files: [] });
-        }
-        return res.status(500).json({ error: 'Failed to fetch files' });
-      }
-
-      // If no files, return empty array
-      if (!files || files.length === 0) {
-        return res.json({ files: [] });
-      }
-
-      // Now try to get files with user info and apply sorting
-      query = supabase
+      // Apply sorting only if we have data
+      const validSortFields = ['filename', 'file_size', 'mime_type', 'uploaded_at'];
+      let sortField = validSortFields.includes(sortBy as string) ? sortBy as string : 'uploaded_at';
+      
+      const order = sortOrder === 'asc' ? 'asc' : 'desc';
+      
+      // Get files with user info and apply sorting in one query
+      const { data: filesWithUsers, error: filesError } = await supabase
         .from('project_files')
         .select(`
-          *,
-          users!project_files_uploaded_by_fkey (
+          id,
+          filename, 
+          file_size,
+          mime_type,
+          uploaded_at,
+          uploaded_by,
+          users:uploaded_by (
             id,
             username,
             email
           )
         `)
-        .eq('project_id', projectId);
+        .eq('project_id', projectId)
+        .order(sortField, { ascending: order === 'asc' });
 
-      // Apply sorting only if we have data
-      const validSortFields = ['filename', 'file_size', 'mime_type', 'created_at'];
-      let sortField = validSortFields.includes(sortBy as string) ? sortBy as string : 'created_at';
-      
-      const order = sortOrder === 'asc' ? 'asc' : 'desc';
-      query = query.order(sortField, { ascending: order === 'asc' });
-
-      const { data: filesWithUsers, error: joinError } = await query;
-
-      if (joinError) {
-        console.error('Error fetching files with user info:', joinError);
-        // Fallback to files without user info
-        res.json({ files });
-      } else {
-        res.json({ files: filesWithUsers });
+      if (filesError) {
+        console.error('Error fetching files with user info:', filesError);
+        // If table doesn't exist, return empty array
+        if (filesError.code === '42P01' || filesError.message?.includes('does not exist')) {
+          return res.json({ files: [] });
+        }
+        // Try fallback without user join
+        const { data: filesOnly, error: fallbackError } = await supabase
+          .from('project_files')
+          .select('*')
+          .eq('project_id', projectId)
+          .order(sortField, { ascending: order === 'asc' });
+        
+        if (fallbackError) {
+          return res.status(500).json({ error: 'Failed to fetch files' });
+        }
+        return res.json({ files: filesOnly || [] });
       }
+
+      // Data should already be in the correct structure
+      console.log('Files with users data:', JSON.stringify(filesWithUsers, null, 2));
+      res.json({ files: filesWithUsers || [] });
 
     } catch (error) {
       console.error('Error in files query:', error);
