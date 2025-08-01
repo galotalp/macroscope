@@ -42,8 +42,8 @@
 
 ### Backend (.env)
 ```
-SUPABASE_URL=https://ipaquntaeftocyvxoawo.supabase.co
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-supabase-anon-key
 JWT_SECRET=your-jwt-secret-key-here
 PORT=3000
 ```
