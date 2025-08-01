@@ -1,0 +1,66 @@
+# General
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.temp
+
+# Environment files (IMPORTANT - keeps secrets safe)
+.env
+.env.local
+.env.production
+.env.*.local
+**/.env
+
+# Backend
+backend/node_modules/
+backend/dist/
+backend/logs/
+backend/uploads/
+backend/npm-debug.log*
+backend/yarn-debug.log*
+backend/yarn-error.log*
+
+# React Native / Expo
+ResearchCoordinatorApp/node_modules/
+ResearchCoordinatorApp/.expo/
+ResearchCoordinatorApp/dist/
+ResearchCoordinatorApp/npm-debug.log*
+ResearchCoordinatorApp/yarn-debug.log*
+ResearchCoordinatorApp/yarn-error.log*
+ResearchCoordinatorApp/Logs/
+ResearchCoordinatorApp/.expo-shared/
+
+# iOS
+ResearchCoordinatorApp/ios/Pods/
+ResearchCoordinatorApp/ios/build/
+ResearchCoordinatorApp/ios/*.xcworkspace/xcuserdata/
+ResearchCoordinatorApp/ios/*.xcodeproj/xcuserdata/
+
+# Android
+ResearchCoordinatorApp/android/app/build/
+ResearchCoordinatorApp/android/build/
+ResearchCoordinatorApp/android/.gradle/
+ResearchCoordinatorApp/android/local.properties
+
+# IDE
+.idea/
+.vscode/
+*.sublime-workspace
+*.swp
+*.swo
+
+# OS generated files
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*~.nib
