@@ -64,3 +64,4 @@ temp/
 *.bak
 *.swp
 *~.nib
+fix-key-format.sh

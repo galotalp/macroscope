@@ -1,0 +1,53 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <circle cx="100" cy="100" r="100" fill="#D2691E"/>
+  
+  <!-- Camel Body -->
+  <ellipse cx="100" cy="140" rx="50" ry="45" fill="#CD853F"/>
+  
+  <!-- Camel Humps -->
+  <ellipse cx="85" cy="115" rx="15" ry="20" fill="#CD853F"/>
+  <ellipse cx="115" cy="115" rx="15" ry="20" fill="#CD853F"/>
+  
+  <!-- Camel Head -->
+  <ellipse cx="100" cy="75" rx="25" ry="30" fill="#CD853F"/>
+  
+  <!-- Baseball Hat -->
+  <ellipse cx="100" cy="50" rx="30" ry="15" fill="#8B0000"/>
+  <ellipse cx="100" cy="45" rx="25" ry="20" fill="#8B0000"/>
+  <ellipse cx="75" cy="55" rx="35" ry="8" fill="#8B0000" transform="rotate(-10 75 55)"/>
+  
+  <!-- Hat Logo -->
+  <circle cx="100" cy="45" r="8" fill="#FFD700"/>
+  <text x="100" y="50" text-anchor="middle" fill="#8B0000" font-family="Arial" font-size="10" font-weight="bold">B</text>
+  
+  <!-- Eyes -->
+  <circle cx="90" cy="70" r="4" fill="#000"/>
+  <circle cx="110" cy="70" r="4" fill="#000"/>
+  <circle cx="91" cy="69" r="1" fill="#FFF"/>
+  <circle cx="111" cy="69" r="1" fill="#FFF"/>
+  
+  <!-- Nostrils -->
+  <ellipse cx="95" cy="85" rx="2" ry="1" fill="#8B4513"/>
+  <ellipse cx="105" cy="85" rx="2" ry="1" fill="#8B4513"/>
+  
+  <!-- Cigar -->
+  <rect x="120" y="82" width="25" height="4" rx="2" fill="#8B4513"/>
+  <rect x="145" y="83" width="3" height="2" fill="#FF4500"/>
+  
+  <!-- Smoke wisps -->
+  <path d="M148 83 Q155 80 158 75 Q160 70 155 68" stroke="#D3D3D3" stroke-width="1.5" fill="none" opacity="0.7"/>
+  <path d="M150 84 Q157 81 160 76 Q162 71 157 69" stroke="#D3D3D3" stroke-width="1" fill="none" opacity="0.5"/>
+  
+  <!-- Legs -->
+  <rect x="75" y="175" width="8" height="20" fill="#CD853F"/>
+  <rect x="90" y="175" width="8" height="20" fill="#CD853F"/>
+  <rect x="110" y="175" width="8" height="20" fill="#CD853F"/>
+  <rect x="125" y="175" width="8" height="20" fill="#CD853F"/>
+  
+  <!-- Hooves -->
+  <ellipse cx="79" cy="195" rx="6" ry="3" fill="#2F4F4F"/>
+  <ellipse cx="94" cy="195" rx="6" ry="3" fill="#2F4F4F"/>
+  <ellipse cx="114" cy="195" rx="6" ry="3" fill="#2F4F4F"/>
+  <ellipse cx="129" cy="195" rx="6" ry="3" fill="#2F4F4F"/>
+</svg>

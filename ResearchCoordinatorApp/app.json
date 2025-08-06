@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "MacroScope",
+    "slug": "macroscope",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "description": "See the big picture in research coordination. Manage projects, teams, and progress with powerful collaborative tools.",
+    "keywords": ["research", "project management", "collaboration", "team", "academic", "science", "coordination"],
+    "scheme": "macroscope",
+    "privacy": "https://legal.macroscope.info/privacy",
+    "termsOfService": "https://legal.macroscope.info/terms",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.billiecooperative.macroscope"
+    },
+    "android": {
+      "package": "com.billiecooperative.macroscope",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
