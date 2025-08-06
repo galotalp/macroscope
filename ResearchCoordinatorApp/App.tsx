@@ -29,6 +29,7 @@ interface AppState {
   selectedGroupId: string | null;
   registrationMessage?: string;
   pendingVerificationEmail?: string;
+  pendingVerificationPassword?: string;
 }
 
 
@@ -186,12 +187,13 @@ export default function App() {
     }));
   };
 
-  const handleRegisterSuccess = (email: string) => {
+  const handleRegisterSuccess = (email: string, password?: string) => {
     // Navigate to email verification screen
     setState(prev => ({
       ...prev,
       currentScreen: 'email-verification',
       pendingVerificationEmail: email,
+      pendingVerificationPassword: password,
       registrationMessage: undefined,
     }));
   };
@@ -268,6 +270,7 @@ export default function App() {
         return (
           <EmailVerificationScreen
             email={state.pendingVerificationEmail!}
+            password={state.pendingVerificationPassword}
             onNavigateBack={() => navigateToScreen('register')}
             onNavigateToLogin={() => {
               setState(prev => ({
@@ -275,6 +278,17 @@ export default function App() {
                 currentScreen: 'login',
                 registrationMessage: 'Account verified! Please log in.',
                 pendingVerificationEmail: undefined,
+                pendingVerificationPassword: undefined,
+              }));
+            }}
+            onVerificationSuccess={(user, token) => {
+              setState(prev => ({
+                ...prev,
+                user,
+                token,
+                currentScreen: 'groups',
+                pendingVerificationEmail: undefined,
+                pendingVerificationPassword: undefined,
               }));
             }}
           />

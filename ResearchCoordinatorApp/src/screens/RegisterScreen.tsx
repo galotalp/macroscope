@@ -8,7 +8,7 @@ import { colors, spacing, typography, shadows, borderRadius } from '../theme';
 import { User } from '../types';
 
 interface RegisterScreenProps {
-  onRegisterSuccess: (email: string) => void;
+  onRegisterSuccess: (email: string, password?: string) => void;
   onNavigateToLogin: () => void;
 }
 
@@ -46,7 +46,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
       const response = await apiService.register(email, password, username);
       console.log('Registration successful:', response);
       // Navigate to email verification screen
-      onRegisterSuccess(email);
+      onRegisterSuccess(email, password);
     } catch (error) {
       console.error('Registration error:', error);
       setSnackbarMessage(transformErrorMessage(error));

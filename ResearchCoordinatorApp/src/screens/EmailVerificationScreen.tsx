@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { Card, Title, Button, Text, Snackbar, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,19 +9,71 @@ import { colors, spacing, typography, shadows, borderRadius } from '../theme';
 
 interface EmailVerificationScreenProps {
   email: string;
+  password?: string;
   onNavigateBack: () => void;
   onNavigateToLogin: () => void;
+  onVerificationSuccess?: (user: any, token: string) => void;
 }
 
 const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({ 
-  email, 
+  email,
+  password,
   onNavigateBack, 
-  onNavigateToLogin 
+  onNavigateToLogin,
+  onVerificationSuccess
 }) => {
   const [loading, setLoading] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarColor, setSnackbarColor] = useState(colors.success);
+
+  // Check verification status when screen loads (if password is available)
+  useEffect(() => {
+    if (password) {
+      // Wait a moment then check status automatically
+      const timer = setTimeout(() => {
+        checkVerificationStatus();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [password]);
+
+  const checkVerificationStatus = async () => {
+    if (!password) {
+      setSnackbarMessage('Unable to check status. Please go back to login and try again.');
+      setSnackbarColor(colors.error);
+      setSnackbarVisible(true);
+      return;
+    }
+
+    setCheckingStatus(true);
+    try {
+      const result = await apiService.checkVerificationStatus(email, password);
+      
+      if (result.isVerified && onVerificationSuccess) {
+        setSnackbarMessage('Email verified! Logging you in...');
+        setSnackbarColor(colors.success);
+        setSnackbarVisible(true);
+        
+        // Wait a moment to show the success message, then proceed
+        setTimeout(() => {
+          onVerificationSuccess(result.user, result.token);
+        }, 1500);
+      } else {
+        setSnackbarMessage('Email not yet verified. Please check your email and click the verification link.');
+        setSnackbarColor(colors.error);
+        setSnackbarVisible(true);
+      }
+    } catch (error) {
+      console.error('Verification status check failed:', error);
+      setSnackbarMessage('Unable to check verification status. Please try again later.');
+      setSnackbarColor(colors.error);
+      setSnackbarVisible(true);
+    } finally {
+      setCheckingStatus(false);
+    }
+  };
 
   const handleResendEmail = async () => {
     setLoading(true);
@@ -73,12 +125,25 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
             </Text>
 
             <View style={styles.buttonContainer}>
+              {password && (
+                <Button
+                  mode="contained"
+                  onPress={checkVerificationStatus}
+                  style={styles.checkButton}
+                  contentStyle={styles.buttonContent}
+                  disabled={loading || checkingStatus}
+                  buttonColor={colors.success}
+                >
+                  {checkingStatus ? <ActivityIndicator color="white" /> : '✓ Check Status'}
+                </Button>
+              )}
+
               <Button
                 mode="contained"
                 onPress={handleResendEmail}
                 style={styles.resendButton}
                 contentStyle={styles.buttonContent}
-                disabled={loading}
+                disabled={loading || checkingStatus}
                 buttonColor={colors.primary}
               >
                 {loading ? <ActivityIndicator color="white" /> : 'Resend Email'}
@@ -88,7 +153,7 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
                 mode="outlined"
                 onPress={onNavigateToLogin}
                 style={styles.loginButton}
-                disabled={loading}
+                disabled={loading || checkingStatus}
                 textColor={colors.primary}
               >
                 Back to Login
@@ -188,6 +253,10 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     gap: spacing.md,
+  },
+  checkButton: {
+    borderRadius: borderRadius.md,
+    ...shadows.medium,
   },
   resendButton: {
     borderRadius: borderRadius.md,

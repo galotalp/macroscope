@@ -89,6 +89,18 @@ class ApiService {
     }
   }
 
+  async checkVerificationStatus(email: string, password: string) {
+    try {
+      const response = await this.makeRequest('/auth/login', 'POST', { email, password });
+      return { isVerified: true, user: response.user, token: response.token };
+    } catch (error: any) {
+      if (error.message?.includes('verify your email') || error.requiresVerification) {
+        return { isVerified: false };
+      }
+      throw error;
+    }
+  }
+
   async logout() {
     await AsyncStorage.removeItem('authToken');
   }
