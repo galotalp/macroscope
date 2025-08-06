@@ -99,8 +99,10 @@ class ApiService {
 
   async checkVerificationStatus(email: string, password: string) {
     try {
+      // Try to login to see if email is verified, but don't store the token
       const response = await this.makeRequest('/auth/login', 'POST', { email, password });
-      return { isVerified: true, user: response.user, token: response.token };
+      // Don't store the token - we just want to check if verification is complete
+      return { isVerified: true };
     } catch (error: any) {
       if (error.message?.includes('verify your email') || error.requiresVerification) {
         return { isVerified: false };

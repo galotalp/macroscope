@@ -12,15 +12,13 @@ interface EmailVerificationScreenProps {
   password?: string;
   onNavigateBack: () => void;
   onNavigateToLogin: () => void;
-  onVerificationSuccess?: (user: any, token: string) => void;
 }
 
 const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({ 
   email,
   password,
   onNavigateBack, 
-  onNavigateToLogin,
-  onVerificationSuccess
+  onNavigateToLogin
 }) => {
   const [loading, setLoading] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
@@ -73,15 +71,15 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
     try {
       const result = await apiService.checkVerificationStatus(email, password);
       
-      if (result.isVerified && onVerificationSuccess) {
-        setSnackbarMessage('Email verified! Logging you in...');
+      if (result.isVerified) {
+        setSnackbarMessage('Email verified! Please log in with your credentials.');
         setSnackbarColor(colors.success);
         setSnackbarVisible(true);
         
-        // Wait a moment to show the success message, then proceed
+        // Wait a moment to show the success message, then go to login
         setTimeout(() => {
-          onVerificationSuccess(result.user, result.token);
-        }, 1500);
+          onNavigateToLogin();
+        }, 2000);
       } else if (!isAutoCheck) {
         // Only show "not verified" message for manual checks, not auto-checks
         setSnackbarMessage('Email not yet verified. Please check your email and click the verification link.');

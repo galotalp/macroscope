@@ -281,16 +281,6 @@ export default function App() {
                 pendingVerificationPassword: undefined,
               }));
             }}
-            onVerificationSuccess={(user, token) => {
-              setState(prev => ({
-                ...prev,
-                user,
-                token,
-                currentScreen: 'groups',
-                pendingVerificationEmail: undefined,
-                pendingVerificationPassword: undefined,
-              }));
-            }}
           />
         );
       case 'groups':
