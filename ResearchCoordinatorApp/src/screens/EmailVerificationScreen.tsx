@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, AppState } from 'react-native';
 import { Card, Title, Button, Text, Snackbar, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -33,13 +33,35 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
     if (password) {
       // Wait a moment then check status automatically
       const timer = setTimeout(() => {
-        checkVerificationStatus();
+        checkVerificationStatus(true); // Initial auto-check
       }, 2000);
       return () => clearTimeout(timer);
     }
   }, [password]);
 
-  const checkVerificationStatus = async () => {
+  // Listen for app state changes to detect when user returns from email
+  useEffect(() => {
+    if (!password) return; // Only set up listener if we can check status
+
+    const handleAppStateChange = (nextAppState: string) => {
+      // When app comes to foreground (user returns from email app)
+      if (nextAppState === 'active') {
+        console.log('App became active, checking verification status...');
+        // Small delay to ensure any background verification completed
+        setTimeout(() => {
+          checkVerificationStatus(true); // Auto-check when app becomes active
+        }, 1000);
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    return () => {
+      subscription?.remove();
+    };
+  }, [password]);
+
+  const checkVerificationStatus = async (isAutoCheck = false) => {
     if (!password) {
       setSnackbarMessage('Unable to check status. Please go back to login and try again.');
       setSnackbarColor(colors.error);
@@ -60,16 +82,20 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
         setTimeout(() => {
           onVerificationSuccess(result.user, result.token);
         }, 1500);
-      } else {
+      } else if (!isAutoCheck) {
+        // Only show "not verified" message for manual checks, not auto-checks
         setSnackbarMessage('Email not yet verified. Please check your email and click the verification link.');
         setSnackbarColor(colors.error);
         setSnackbarVisible(true);
       }
     } catch (error) {
       console.error('Verification status check failed:', error);
-      setSnackbarMessage('Unable to check verification status. Please try again later.');
-      setSnackbarColor(colors.error);
-      setSnackbarVisible(true);
+      if (!isAutoCheck) {
+        // Only show error messages for manual checks, not auto-checks
+        setSnackbarMessage('Unable to check verification status. Please try again later.');
+        setSnackbarColor(colors.error);
+        setSnackbarVisible(true);
+      }
     } finally {
       setCheckingStatus(false);
     }
@@ -128,7 +154,7 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
               {password && (
                 <Button
                   mode="contained"
-                  onPress={checkVerificationStatus}
+                  onPress={() => checkVerificationStatus(false)}
                   style={styles.checkButton}
                   contentStyle={styles.buttonContent}
                   disabled={loading || checkingStatus}
