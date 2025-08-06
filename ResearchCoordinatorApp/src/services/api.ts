@@ -115,6 +115,16 @@ class ApiService {
     await AsyncStorage.removeItem('authToken');
   }
 
+  async forgotPassword(email: string) {
+    try {
+      const response = await this.makeRequest('/auth/forgot-password', 'POST', { email });
+      return response;
+    } catch (error) {
+      console.error('Forgot password failed:', error);
+      throw error;
+    }
+  }
+
   // User methods
   async getUserProfile() {
     const response = await this.makeRequest('/users/profile');

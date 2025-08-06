@@ -10,11 +10,12 @@ import { User } from '../types';
 interface LoginScreenProps {
   onLoginSuccess: (user: User, token: string) => void;
   onNavigateToRegister: () => void;
+  onNavigateToForgotPassword: () => void;
   onRequiresVerification: (email: string) => void;
   registrationMessage?: string;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToRegister, onRequiresVerification, registrationMessage }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToRegister, onNavigateToForgotPassword, onRequiresVerification, registrationMessage }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -104,6 +105,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
                 buttonColor={colors.primary}
               >
                 {loading ? <ActivityIndicator color="white" /> : 'Sign In'}
+              </Button>
+
+              <Button
+                mode="text"
+                onPress={onNavigateToForgotPassword}
+                style={styles.linkButton}
+                disabled={loading}
+                textColor={colors.primaryDark}
+              >
+                Forgot Password?
               </Button>
 
               <Button

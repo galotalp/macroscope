@@ -10,6 +10,7 @@ import theme, { colors } from './src/theme';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import EmailVerificationScreen from './src/screens/EmailVerificationScreen';
+import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
 import ResearchGroupsScreen from './src/screens/ResearchGroupsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
@@ -18,7 +19,7 @@ import CreateGroupScreen from './src/screens/CreateGroupScreen';
 import ProjectsScreen from './src/screens/ProjectsScreen';
 import ResearchGroupSettingsScreen from './src/screens/ResearchGroupSettingsScreen';
 
-type Screen = 'login' | 'register' | 'email-verification' | 'groups' | 'profile' | 'settings' | 'join-group' | 'create-group' | 'projects' | 'group-settings';
+type Screen = 'login' | 'register' | 'email-verification' | 'forgot-password' | 'groups' | 'profile' | 'settings' | 'join-group' | 'create-group' | 'projects' | 'group-settings';
 
 interface AppState {
   user: User | null;
@@ -69,6 +70,28 @@ export default function App() {
                   ...prev,
                   currentScreen: 'login',
                   registrationMessage: 'Your email has been verified! You can now log in.',
+                }));
+              }
+            }
+          ]
+        );
+      } else if (url.startsWith('macroscope://login?reset=success')) {
+        // Extract email from URL parameters
+        const emailMatch = url.match(/email=([^&]+)/);
+        const email = emailMatch ? decodeURIComponent(emailMatch[1]) : '';
+        
+        // Show success message and navigate to login
+        Alert.alert(
+          'Password Reset Complete! ✅',
+          'Your password has been successfully updated. You can now log in with your new password.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                setState(prev => ({
+                  ...prev,
+                  currentScreen: 'login',
+                  registrationMessage: 'Your password has been reset! You can now log in with your new password.',
                 }));
               }
             }
@@ -249,6 +272,7 @@ export default function App() {
           <LoginScreen
             onLoginSuccess={handleLoginSuccess}
             onNavigateToRegister={() => navigateToScreen('register')}
+            onNavigateToForgotPassword={() => navigateToScreen('forgot-password')}
             onRequiresVerification={(email) => {
               setState(prev => ({
                 ...prev,
@@ -281,6 +305,12 @@ export default function App() {
                 pendingVerificationPassword: undefined,
               }));
             }}
+          />
+        );
+      case 'forgot-password':
+        return (
+          <ForgotPasswordScreen
+            onNavigateBack={() => navigateToScreen('login')}
           />
         );
       case 'groups':
