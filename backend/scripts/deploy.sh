@@ -1,4 +1,4 @@
-#\!/bin/bash
+#!/bin/bash
 
 # EC2 Deployment Script for MacroScope Backend
 
@@ -24,6 +24,5 @@ npm run build
 echo "♻️  Restarting application..."
 pm2 reload ecosystem.config.js --env production
 
-echo "✅ Deployment complete\!"
+echo "✅ Deployment complete!"
 echo "🔍 Check logs with: pm2 logs"
-EOF < /dev/null
