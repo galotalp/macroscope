@@ -50,6 +50,14 @@ class ApiService {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error(`API Error: ${response.status}`, errorData);
+        
+        // Auto-clear auth token on 401/403 errors to force re-login
+        if ((response.status === 401 || response.status === 403) && errorData.requiresReauth) {
+          console.log('Auth error detected, clearing stored token');
+          await AsyncStorage.removeItem('authToken');
+          // You might want to trigger a re-login flow here
+        }
+        
         throw new Error(errorData.error || errorData.message || `HTTP error! status: ${response.status}`);
       }
 
