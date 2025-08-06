@@ -12,13 +12,20 @@ const client_ses_1 = require("@aws-sdk/client-ses");
 const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || 'ses';
 let sesClient = null;
 if (EMAIL_PROVIDER === 'ses' && process.env.AWS_ACCESS_KEY_ID) {
-    sesClient = new client_ses_1.SESClient({
-        region: process.env.AWS_REGION || 'us-east-1',
-        credentials: {
-            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        },
-    });
+    try {
+        sesClient = new client_ses_1.SESClient({
+            region: process.env.AWS_REGION || 'us-east-1',
+            credentials: {
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+            },
+            maxAttempts: 3,
+        });
+        console.log('AWS SES client configured for region:', process.env.AWS_REGION || 'us-east-1');
+    }
+    catch (error) {
+        console.error('Failed to configure AWS SES client:', error);
+    }
 }
 const router = express_1.default.Router();
 async function sendVerificationEmail(email, verificationToken) {
@@ -47,7 +54,18 @@ async function sendVerificationEmail(email, verificationToken) {
                 Body: { Html: { Data: emailContent } }
             }
         });
-        await sesClient.send(command);
+        try {
+            const result = await sesClient.send(command);
+            console.log('Email sent successfully. MessageId:', result.MessageId);
+        }
+        catch (error) {
+            console.error('AWS SES error:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            throw new Error(`Failed to send email: ${errorMessage}`);
+        }
+    }
+    else {
+        throw new Error('Email service not configured or unavailable');
     }
 }
 router.get('/test', (req, res) => {

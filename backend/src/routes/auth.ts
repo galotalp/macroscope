@@ -11,16 +11,22 @@ import nodemailer from 'nodemailer';
 // Email configuration
 const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || 'ses';
 
-// Configure AWS SES
+// Configure AWS SES with better error handling
 let sesClient: SESClient | null = null;
 if (EMAIL_PROVIDER === 'ses' && process.env.AWS_ACCESS_KEY_ID) {
-  sesClient = new SESClient({
-    region: process.env.AWS_REGION || 'us-east-1',
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    },
-  });
+  try {
+    sesClient = new SESClient({
+      region: process.env.AWS_REGION || 'us-east-1',
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+      maxAttempts: 3,
+    });
+    console.log('AWS SES client configured for region:', process.env.AWS_REGION || 'us-east-1');
+  } catch (error) {
+    console.error('Failed to configure AWS SES client:', error);
+  }
 }
 
 const router = express.Router();
@@ -55,7 +61,16 @@ async function sendVerificationEmail(email: string, verificationToken: string) {
       }
     });
     
-    await sesClient.send(command);
+    try {
+      const result = await sesClient.send(command);
+      console.log('Email sent successfully. MessageId:', result.MessageId);
+    } catch (error) {
+      console.error('AWS SES error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to send email: ${errorMessage}`);
+    }
+  } else {
+    throw new Error('Email service not configured or unavailable');
   }
 }
 
@@ -109,18 +124,18 @@ router.post('/register', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create user' });
     }
 
-    // Send verification email (temporarily disabled due to SES connectivity issues)
+    // Send verification email
     try {
-      // await sendVerificationEmail(email, verificationToken);
-      console.log('Email verification temporarily disabled for:', email);
+      await sendVerificationEmail(email, verificationToken);
+      console.log('Verification email sent to:', email);
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError);
-      // Don't fail registration if email sending fails
+      // Don't fail registration if email sending fails - user can request resend
     }
 
     res.status(201).json({
-      message: 'Registration successful! Email verification temporarily disabled.',
-      requiresVerification: false,
+      message: 'Registration successful! Please check your email to verify your account.',
+      requiresVerification: true,
       email: email
     });
   } catch (error) {
@@ -162,14 +177,14 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Username or password not recognized' });
     }
 
-    // Check if email is verified (temporarily disabled)
-    // if (!user.email_verified) {
-    //   return res.status(403).json({ 
-    //     error: 'Please verify your email address before logging in',
-    //     requiresVerification: true,
-    //     email: user.email
-    //   });
-    // }
+    // Check if email is verified
+    if (!user.email_verified) {
+      return res.status(403).json({ 
+        error: 'Please verify your email address before logging in',
+        requiresVerification: true,
+        email: user.email
+      });
+    }
 
     // Generate JWT token
     const token = jwt.sign(
