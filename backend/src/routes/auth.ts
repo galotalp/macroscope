@@ -109,18 +109,18 @@ router.post('/register', async (req, res) => {
       return res.status(500).json({ error: 'Failed to create user' });
     }
 
-    // Send verification email
+    // Send verification email (temporarily disabled due to SES connectivity issues)
     try {
-      await sendVerificationEmail(email, verificationToken);
-      console.log('Verification email sent to:', email);
+      // await sendVerificationEmail(email, verificationToken);
+      console.log('Email verification temporarily disabled for:', email);
     } catch (emailError) {
       console.error('Failed to send verification email:', emailError);
       // Don't fail registration if email sending fails
     }
 
     res.status(201).json({
-      message: 'Registration successful! Please check your email to verify your account.',
-      requiresVerification: true,
+      message: 'Registration successful! Email verification temporarily disabled.',
+      requiresVerification: false,
       email: email
     });
   } catch (error) {
@@ -162,14 +162,14 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Username or password not recognized' });
     }
 
-    // Check if email is verified
-    if (!user.email_verified) {
-      return res.status(403).json({ 
-        error: 'Please verify your email address before logging in',
-        requiresVerification: true,
-        email: user.email
-      });
-    }
+    // Check if email is verified (temporarily disabled)
+    // if (!user.email_verified) {
+    //   return res.status(403).json({ 
+    //     error: 'Please verify your email address before logging in',
+    //     requiresVerification: true,
+    //     email: user.email
+    //   });
+    // }
 
     // Generate JWT token
     const token = jwt.sign(
