@@ -214,9 +214,11 @@ Follow prompts and choose redirect option.
 
 ### 8.2 Enable Auto-updates
 ```bash
-sudo yum install -y yum-cron
-sudo systemctl enable yum-cron
-sudo systemctl start yum-cron
+# For Amazon Linux 2023
+sudo dnf install -y dnf-automatic
+sudo sed -i 's/apply_updates = no/apply_updates = yes/' /etc/dnf/automatic.conf
+sudo systemctl enable dnf-automatic.timer
+sudo systemctl start dnf-automatic.timer
 ```
 
 ## Step 9: Monitoring
