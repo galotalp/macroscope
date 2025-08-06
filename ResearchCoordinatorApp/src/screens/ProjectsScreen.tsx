@@ -189,6 +189,7 @@ const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack
 
       <ScrollView
         style={styles.content}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -299,6 +300,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: spacing.md,
+  },
+  scrollContent: {
+    paddingBottom: 80, // Space for single FAB (56px) + margins + extra buffer
   },
   loadingContainer: {
     flex: 1,

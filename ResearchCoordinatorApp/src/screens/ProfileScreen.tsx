@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Alert,
   SafeAreaView,
+  RefreshControl,
 } from 'react-native';
 import {
   Card,
@@ -47,13 +48,43 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarColor, setSnackbarColor] = useState('green');
   const [profilePictureSelectorVisible, setProfilePictureSelectorVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const theme = useTheme();
+
+  // Refresh user profile data when screen loads
+  const refreshProfileData = async (showLoading = false) => {
+    if (showLoading) {
+      setRefreshing(true);
+    }
+    
+    try {
+      const response = await apiService.getUserProfile();
+      if (response.user) {
+        onUserUpdate(response.user);
+        if (showLoading) {
+          showSnackbar('Profile refreshed successfully!');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh profile data:', error);
+      if (showLoading) {
+        showSnackbar('Failed to refresh profile data', 'red');
+      }
+    } finally {
+      if (showLoading) {
+        setRefreshing(false);
+      }
+    }
+  };
 
   useEffect(() => {
     if (user) {
       setUsername(user.username);
       setBio(user.bio || '');
     }
+    
+    // Refresh profile data when component mounts
+    refreshProfileData();
   }, [user]);
 
   const showSnackbar = (message: string, color: string = 'green') => {
@@ -166,7 +197,17 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.container}>
+      <ScrollView 
+        style={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => refreshProfileData(true)}
+            colors={[theme.colors.primary]}
+            tintColor={theme.colors.primary}
+          />
+        }
+      >
       <Card style={styles.card}>
         <Card.Content>
           <Title style={styles.title}>My Profile</Title>

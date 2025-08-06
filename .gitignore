@@ -75,3 +75,20 @@ EC2_UPDATE_ENV.md
 FIX_AWS_SES_EMAIL.md
 FIX_FILE_UPLOAD_SIZE.md
 DEPLOY_EMAIL_VERIFICATION.md
+
+# Security and credentials files (NEVER COMMIT THESE!)
+CREDENTIALS_AND_ACCESS.md
+CREDENTIALS_AND_ACCESS.txt
+CREDENTIALS.md
+CREDENTIALS.txt
+*credentials*
+*secrets*
+*.pem
+*.key
+*.cert
+macroscope-key.pem
+
+# Backup files
+*.backup
+*.bak
+.env.backup*

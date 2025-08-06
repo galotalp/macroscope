@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Avatar } from 'react-native-paper';
 import { 
   isDefaultProfilePicture, 
@@ -20,6 +20,9 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
   style 
 }) => {
   const [imageLoadError, setImageLoadError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const maxRetries = 2;
 
   // Debug logging
   console.log('UserAvatar - profilePictureUrl:', profilePictureUrl);
@@ -27,6 +30,13 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
   console.log('UserAvatar - isDefaultProfilePicture:', isDefaultProfilePicture(profilePictureUrl));
   console.log('UserAvatar - size:', size);
   console.log('UserAvatar - imageLoadError:', imageLoadError);
+
+  // Reset error state when profilePictureUrl changes
+  useEffect(() => {
+    setImageLoadError(false);
+    setRetryCount(0);
+    setIsLoading(false);
+  }, [profilePictureUrl]);
   
   // Check if it's a default profile picture
   if (isDefaultProfilePicture(profilePictureUrl)) {
@@ -47,18 +57,39 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
   // If it's a custom profile picture URL and hasn't failed to load
   if (profilePictureUrl && !isDefaultProfilePicture(profilePictureUrl) && !imageLoadError) {
     console.log('UserAvatar - Using custom profile picture URL:', profilePictureUrl);
+    
+    // Add cache busting and retry logic for better reliability
+    const imageUri = retryCount > 0 
+      ? `${profilePictureUrl}?retry=${retryCount}&t=${Date.now()}` 
+      : profilePictureUrl;
+    
     return (
       <Avatar.Image
         size={size}
         source={{ 
-          uri: profilePictureUrl,
-          cache: 'force-cache'
+          uri: imageUri,
+          cache: 'reload' // Use reload instead of force-cache for fresh images
         }}
         style={style}
+        onLoadStart={() => {
+          setIsLoading(true);
+        }}
+        onLoad={() => {
+          setIsLoading(false);
+          console.log('UserAvatar - Image loaded successfully');
+        }}
         onError={(error) => {
+          setIsLoading(false);
           console.log('UserAvatar - Image failed to load:', error);
-          console.log('UserAvatar - Setting imageLoadError to true, will fallback to initials');
-          setImageLoadError(true);
+          console.log(`UserAvatar - Retry count: ${retryCount}/${maxRetries}`);
+          
+          if (retryCount < maxRetries) {
+            console.log('UserAvatar - Retrying image load...');
+            setRetryCount(prev => prev + 1);
+          } else {
+            console.log('UserAvatar - Max retries reached, falling back to initials');
+            setImageLoadError(true);
+          }
         }}
       />
     );

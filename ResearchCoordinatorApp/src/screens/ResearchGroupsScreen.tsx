@@ -131,6 +131,7 @@ const ResearchGroupsScreen: React.FC<ResearchGroupsScreenProps> = ({
 
       <ScrollView
         style={styles.content}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -230,6 +231,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: spacing.md,
+  },
+  scrollContent: {
+    paddingBottom: 140, // Space for 2 FABs (56px each) + margins (16px each) + extra buffer
   },
   loadingContainer: {
     flex: 1,
