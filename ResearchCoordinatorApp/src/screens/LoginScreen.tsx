@@ -10,10 +10,11 @@ import { User } from '../types';
 interface LoginScreenProps {
   onLoginSuccess: (user: User, token: string) => void;
   onNavigateToRegister: () => void;
+  onRequiresVerification: (email: string) => void;
   registrationMessage?: string;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToRegister, registrationMessage }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToRegister, onRequiresVerification, registrationMessage }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,8 +37,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
       if (response.token && response.user) {
         onLoginSuccess(response.user, response.token);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
+      
+      // Check if error indicates email verification is required
+      if (error.message && error.message.includes('verify your email')) {
+        onRequiresVerification(email);
+        return;
+      }
+      
       setSnackbarMessage(transformErrorMessage(error));
       setSnackbarVisible(true);
     } finally {

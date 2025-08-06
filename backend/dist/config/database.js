@@ -23,9 +23,10 @@ const isValidServiceKey = supabaseServiceKey &&
     supabaseServiceKey.trim() !== '' &&
     supabaseServiceKey !== 'your-supabase-service-role-key-here' &&
     supabaseServiceKey.length > 20;
-exports.isDemoMode = !isValidUrl || !isValidAnonKey || !isValidServiceKey;
-exports.supabase = exports.isDemoMode ? null : (0, supabase_js_1.createClient)(supabaseUrl, supabaseServiceKey);
-exports.supabaseAnon = exports.isDemoMode ? null : (0, supabase_js_1.createClient)(supabaseUrl, supabaseAnonKey);
+const isProduction = process.env.NODE_ENV === 'production';
+exports.isDemoMode = isProduction ? false : (!isValidUrl || !isValidAnonKey || !isValidServiceKey);
+exports.supabase = (exports.isDemoMode || !isValidUrl || !isValidServiceKey) ? null : (0, supabase_js_1.createClient)(supabaseUrl, supabaseServiceKey);
+exports.supabaseAnon = (exports.isDemoMode || !isValidUrl || !isValidAnonKey) ? null : (0, supabase_js_1.createClient)(supabaseUrl, supabaseAnonKey);
 if (exports.isDemoMode) {
     console.log('🔧 Running in demo mode - no valid Supabase credentials found');
     if (supabaseUrl && supabaseUrl !== 'your-supabase-url-here') {

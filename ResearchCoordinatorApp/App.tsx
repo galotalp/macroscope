@@ -133,10 +133,11 @@ export default function App() {
 
   const checkDemoMode = async () => {
     try {
-      const url = `${API_URL.replace('/api', '')}/`;
-      console.log('Checking demo mode at:', url);
+      // Construct the base URL properly
+      const baseUrl = API_URL.endsWith('/api') ? API_URL.slice(0, -4) : API_URL;
+      console.log('Checking demo mode at:', baseUrl);
       
-      const response = await fetch(url, {
+      const response = await fetch(baseUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -246,6 +247,13 @@ export default function App() {
           <LoginScreen
             onLoginSuccess={handleLoginSuccess}
             onNavigateToRegister={() => navigateToScreen('register')}
+            onRequiresVerification={(email) => {
+              setState(prev => ({
+                ...prev,
+                currentScreen: 'email-verification',
+                pendingVerificationEmail: email,
+              }));
+            }}
             registrationMessage={state.registrationMessage}
           />
         );

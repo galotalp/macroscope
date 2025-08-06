@@ -25,13 +25,15 @@ const isValidServiceKey = supabaseServiceKey &&
                          supabaseServiceKey !== 'your-supabase-service-role-key-here' &&
                          supabaseServiceKey.length > 20;
 
-export const isDemoMode = !isValidUrl || !isValidAnonKey || !isValidServiceKey;
+// Force production mode when NODE_ENV is production, regardless of credentials
+const isProduction = process.env.NODE_ENV === 'production';
+export const isDemoMode = isProduction ? false : (!isValidUrl || !isValidAnonKey || !isValidServiceKey);
 
 // Backend client using service role (bypasses RLS for your API)
-export const supabase = isDemoMode ? null : createClient(supabaseUrl!, supabaseServiceKey!);
+export const supabase = (isDemoMode || !isValidUrl || !isValidServiceKey) ? null : createClient(supabaseUrl!, supabaseServiceKey!);
 
 // Optional: Keep anon client for any client-side operations (if needed)
-export const supabaseAnon = isDemoMode ? null : createClient(supabaseUrl!, supabaseAnonKey!);
+export const supabaseAnon = (isDemoMode || !isValidUrl || !isValidAnonKey) ? null : createClient(supabaseUrl!, supabaseAnonKey!);
 
 if (isDemoMode) {
   console.log('🔧 Running in demo mode - no valid Supabase credentials found');

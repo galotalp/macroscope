@@ -2,7 +2,7 @@
 import { Platform } from 'react-native';
 
 const getApiUrl = () => {
-  if (__DEV__) {
+  if (false) {
     // Development: Use your local development server
     return Platform.select({
       ios: 'http://localhost:3000/api',

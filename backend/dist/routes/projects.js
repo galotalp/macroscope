@@ -611,44 +611,43 @@ router.get('/:projectId/files', auth_1.authenticateToken, async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
         try {
-            let query = database_1.supabase
-                .from('project_files')
-                .select('*')
-                .eq('project_id', projectId);
-            const { data: files, error: filesError } = await query;
-            if (filesError) {
-                console.error('Error fetching files:', filesError);
-                if (filesError.code === '42P01' || ((_a = filesError.message) === null || _a === void 0 ? void 0 : _a.includes('does not exist'))) {
-                    return res.json({ files: [] });
-                }
-                return res.status(500).json({ error: 'Failed to fetch files' });
-            }
-            if (!files || files.length === 0) {
-                return res.json({ files: [] });
-            }
-            query = database_1.supabase
+            const validSortFields = ['filename', 'file_size', 'mime_type', 'uploaded_at'];
+            let sortField = validSortFields.includes(sortBy) ? sortBy : 'uploaded_at';
+            const order = sortOrder === 'asc' ? 'asc' : 'desc';
+            const { data: filesWithUsers, error: filesError } = await database_1.supabase
                 .from('project_files')
                 .select(`
-          *,
-          users!project_files_uploaded_by_fkey (
+          id,
+          filename, 
+          file_size,
+          mime_type,
+          uploaded_at,
+          uploaded_by,
+          users:uploaded_by (
             id,
             username,
             email
           )
         `)
-                .eq('project_id', projectId);
-            const validSortFields = ['filename', 'file_size', 'mime_type', 'created_at'];
-            let sortField = validSortFields.includes(sortBy) ? sortBy : 'created_at';
-            const order = sortOrder === 'asc' ? 'asc' : 'desc';
-            query = query.order(sortField, { ascending: order === 'asc' });
-            const { data: filesWithUsers, error: joinError } = await query;
-            if (joinError) {
-                console.error('Error fetching files with user info:', joinError);
-                res.json({ files });
+                .eq('project_id', projectId)
+                .order(sortField, { ascending: order === 'asc' });
+            if (filesError) {
+                console.error('Error fetching files with user info:', filesError);
+                if (filesError.code === '42P01' || ((_a = filesError.message) === null || _a === void 0 ? void 0 : _a.includes('does not exist'))) {
+                    return res.json({ files: [] });
+                }
+                const { data: filesOnly, error: fallbackError } = await database_1.supabase
+                    .from('project_files')
+                    .select('*')
+                    .eq('project_id', projectId)
+                    .order(sortField, { ascending: order === 'asc' });
+                if (fallbackError) {
+                    return res.status(500).json({ error: 'Failed to fetch files' });
+                }
+                return res.json({ files: filesOnly || [] });
             }
-            else {
-                res.json({ files: filesWithUsers });
-            }
+            console.log('Files with users data:', JSON.stringify(filesWithUsers, null, 2));
+            res.json({ files: filesWithUsers || [] });
         }
         catch (error) {
             console.error('Error in files query:', error);
