@@ -65,3 +65,11 @@ temp/
 *.swp
 *~.nib
 fix-key-format.sh
+
+# Documentation files that may contain sensitive information
+*UPDATE_ENV*.md
+*AWS*.md
+*SES*.md
+EC2_UPDATE_ENV.md
+FIX_AWS_SES_EMAIL.md
+FIX_FILE_UPLOAD_SIZE.md
