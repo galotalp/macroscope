@@ -5,6 +5,13 @@ import { supabase, isDemoMode } from './config/database';
 
 dotenv.config();
 
+// Validate required environment variables
+if (!process.env.JWT_SECRET) {
+  console.error('❌ FATAL ERROR: JWT_SECRET environment variable is not set!');
+  console.error('Please set JWT_SECRET in your .env file');
+  process.exit(1);
+}
+
 const app = express();
 const port = process.env.PORT || 3000;
 

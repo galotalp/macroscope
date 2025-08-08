@@ -18,7 +18,10 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
     return res.status(401).json({ error: 'Access token required', requiresReauth: true });
   }
 
-  const secret = process.env.JWT_SECRET || 'your-secret-key';
+  if (!process.env.JWT_SECRET) {
+    return res.status(500).json({ error: 'Server configuration error: JWT secret not set' });
+  }
+  const secret = process.env.JWT_SECRET;
   
   jwt.verify(token, secret, (err: any, user: any) => {
     if (err) {
