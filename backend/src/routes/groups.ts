@@ -371,7 +371,8 @@ router.get('/:groupId/details', authenticateToken, async (req, res) => {
       },
       members,
       joinRequests: isAdmin ? joinRequests : [],
-      userRole: membership.role
+      userRole: membership.role,
+      isAdmin: isAdmin
     });
   } catch (error) {
     console.error('Error fetching group details:', error);
