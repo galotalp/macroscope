@@ -4,6 +4,52 @@
 
 ---
 
+## 🚨 **CRITICAL: Mandatory Development Workflow**
+
+**⚠️ ALL FUTURE LLMs WORKING ON THIS PROJECT MUST FOLLOW THIS WORKFLOW ⚠️**
+
+### **Rule #1: NEVER Edit Production Files Directly**
+- **NEVER** edit files directly on the EC2 production server
+- **NEVER** make changes without first updating the GitHub repository
+- **ALWAYS** maintain consistency between local, repository, and production environments
+
+### **Mandatory Workflow for ALL Code Changes:**
+
+1. **Read & Understand**: Always read existing files first to understand current implementation
+2. **Edit Locally**: Make ALL changes to the local codebase first
+3. **Test Changes**: Verify changes work locally when possible
+4. **Commit to Git**: Stage, commit, and push changes to GitHub repository
+5. **Deploy to Production**: Pull changes from repository to EC2 and restart services
+
+### **Correct Deployment Commands:**
+```bash
+# Step 1: Commit changes locally
+git add .
+git commit -m "Descriptive commit message"
+git push origin main
+
+# Step 2: Deploy to EC2
+ssh -i ~/Downloads/macroscope-key.pem ec2-user@18.213.201.127 "cd macroscope && git pull origin main && cd backend && npm run build && pm2 restart macroscope-backend --update-env"
+```
+
+### **Why This Matters:**
+- **Version Control**: Maintains complete history of all changes
+- **Collaboration**: Other developers can see what was changed and why
+- **Disaster Recovery**: Can restore from repository if server fails
+- **Code Review**: Changes can be reviewed and tracked
+- **Consistency**: Prevents drift between environments
+
+### **Consequences of Violating This Rule:**
+- Code changes get lost during server restarts
+- Inconsistencies between environments cause bugs
+- No record of what changes were made
+- Cannot rollback problematic changes
+- Wastes time re-implementing lost changes
+
+**🔒 This workflow is NON-NEGOTIABLE for all future work on this project.**
+
+---
+
 ## 📖 Table of Contents
 1. [Application Overview](#application-overview)
 2. [Architecture Components](#architecture-components)
