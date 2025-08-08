@@ -649,7 +649,13 @@ router.get('/pending-requests-count', authenticateToken, async (req, res) => {
       pendingRequestsCount: countMap.get(membership.group_id) || 0
     }));
 
-    res.json({ groups: groupCounts });
+    // Calculate total pending requests across all admin groups
+    const totalPendingRequests = groupCounts.reduce((total, group) => total + group.pendingRequestsCount, 0);
+
+    res.json({ 
+      totalPendingRequests,
+      groupCounts 
+    });
   } catch (error) {
     console.error('Error fetching pending request counts:', error);
     res.status(500).json({ error: 'Internal server error' });
