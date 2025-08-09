@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, Linking, Alert } from 'react-native';
 import { Provider as PaperProvider, Banner } from 'react-native-paper';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_URL } from './src/config';
 import { User } from './src/types';
-import apiService from './src/services/api';
+import { supabase } from './src/config/supabase';
+import supabaseService from './src/services/supabaseService';
 import theme, { colors } from './src/theme';
 
 import LoginScreen from './src/screens/LoginScreen';
@@ -23,10 +23,9 @@ type Screen = 'login' | 'register' | 'email-verification' | 'forgot-password' | 
 
 interface AppState {
   user: User | null;
-  token: string | null;
+  session: any | null;
   isLoading: boolean;
   currentScreen: Screen;
-  isDemoMode: boolean;
   selectedGroupId: string | null;
   registrationMessage?: string;
   pendingVerificationEmail?: string;
@@ -37,17 +36,104 @@ interface AppState {
 export default function App() {
   const [state, setState] = useState<AppState>({
     user: null,
-    token: null,
+    session: null,
     isLoading: true,
     currentScreen: 'login',
-    isDemoMode: false,
     selectedGroupId: null,
   });
 
   useEffect(() => {
-    checkAuthStatus();
-    checkDemoMode();
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
+      
+      // For USER_UPDATED events (like password changes), navigate to groups immediately
+      // Don't try to refresh user data during this event as it can cause hangs
+      if (event === 'USER_UPDATED' && session?.user) {
+        console.log('Handling USER_UPDATED event - navigating to groups without profile refresh');
+        
+        console.log('Setting state and navigating to groups');
+        setState(prev => ({
+          ...prev,
+          session: session,
+          currentScreen: 'groups',
+          selectedGroupId: null,
+          isLoading: false,
+        }));
+        console.log('State updated successfully');
+        return;
+      }
+      
+      if (session?.user) {
+        // User is signed in
+        try {
+          const userProfile = await supabaseService.getUserProfile();
+          
+          // Check for last visited group
+          const lastVisitedGroupId = await AsyncStorage.getItem('lastVisitedGroupId');
+          let shouldNavigateToProjects = false;
+          
+          if (lastVisitedGroupId) {
+            try {
+              await supabaseService.getProjects(lastVisitedGroupId);
+              shouldNavigateToProjects = true;
+            } catch (error) {
+              console.log('User no longer has access to last visited group, clearing it');
+              await AsyncStorage.removeItem('lastVisitedGroupId');
+            }
+          }
+          
+          setState(prev => ({
+            ...prev,
+            user: userProfile.user,
+            session: session,
+            currentScreen: shouldNavigateToProjects ? 'projects' : 'groups',
+            selectedGroupId: shouldNavigateToProjects ? lastVisitedGroupId : null,
+            isLoading: false,
+          }));
+        } catch (error) {
+          console.error('Error loading user profile:', error);
+          setState(prev => ({
+            ...prev,
+            user: null,
+            session: null,
+            currentScreen: 'login',
+            isLoading: false,
+          }));
+        }
+      } else {
+        // User is signed out
+        setState(prev => ({
+          ...prev,
+          user: null,
+          session: null,
+          currentScreen: 'login',
+          selectedGroupId: null,
+          isLoading: false,
+        }));
+      }
+    });
+
+    // Check initial session
+    checkInitialSession();
     
+    // Clean up subscription
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
+
+  const checkInitialSession = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      // The auth state change listener will handle the session
+    } catch (error) {
+      console.error('Error checking initial session:', error);
+      setState(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  useEffect(() => {
     // Handle deep links
     const handleDeepLink = (url: string | null) => {
       if (!url) return;
@@ -109,104 +195,16 @@ export default function App() {
     });
     
     return () => {
-      subscription.remove();
+      // Clean up deep link listener
     };
   }, []);
 
-  const checkAuthStatus = async () => {
-    try {
-      const token = await AsyncStorage.getItem('authToken');
-      if (token) {
-        // Verify token and get user info
-        const userProfile = await apiService.getUserProfile();
-        
-        // Check for last visited group
-        const lastVisitedGroupId = await AsyncStorage.getItem('lastVisitedGroupId');
-        
-        // Verify that the user still has access to the last visited group
-        let shouldNavigateToProjects = false;
-        if (lastVisitedGroupId) {
-          try {
-            // Try to get projects for the group to verify access
-            await apiService.getProjects(lastVisitedGroupId);
-            shouldNavigateToProjects = true;
-          } catch (error) {
-            console.log('User no longer has access to last visited group, clearing it');
-            await AsyncStorage.removeItem('lastVisitedGroupId');
-          }
-        }
-        
-        setState(prev => ({
-          ...prev,
-          user: userProfile.user,
-          token,
-          currentScreen: shouldNavigateToProjects ? 'projects' : 'groups',
-          selectedGroupId: shouldNavigateToProjects ? lastVisitedGroupId : null,
-          isLoading: false,
-        }));
-      } else {
-        setState(prev => ({ ...prev, isLoading: false }));
-      }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-      // Clear invalid token
-      await AsyncStorage.removeItem('authToken');
-      setState(prev => ({ ...prev, isLoading: false, user: null, token: null }));
-    }
-  };
-
-  const checkDemoMode = async () => {
-    try {
-      // Construct the base URL properly
-      const baseUrl = API_URL.endsWith('/api') ? API_URL.slice(0, -4) : API_URL;
-      console.log('Checking demo mode at:', baseUrl);
-      
-      const response = await fetch(baseUrl, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        console.warn('Demo mode check failed with status:', response.status);
-        return;
-      }
-      
-      const data = await response.json();
-      console.log('Demo mode response:', data);
-      setState(prev => ({ ...prev, isDemoMode: data.demoMode }));
-    } catch (error) {
-      console.error('Failed to check demo mode:', error);
-      // Don't fail the app if demo mode check fails
-      setState(prev => ({ ...prev, isDemoMode: false }));
-    }
-  };
-
   const handleLoginSuccess = async (user: User, token: string) => {
-    // Check for last visited group
-    const lastVisitedGroupId = await AsyncStorage.getItem('lastVisitedGroupId');
-    
-    // Verify that the user still has access to the last visited group
-    let shouldNavigateToProjects = false;
-    if (lastVisitedGroupId) {
-      try {
-        // Try to get projects for the group to verify access
-        await apiService.getProjects(lastVisitedGroupId);
-        shouldNavigateToProjects = true;
-      } catch (error) {
-        console.log('User no longer has access to last visited group, clearing it');
-        await AsyncStorage.removeItem('lastVisitedGroupId');
-      }
-    }
-    
+    // The auth state change listener will handle the session automatically
+    // Just clear the registration message
     setState(prev => ({
       ...prev,
-      user,
-      token,
-      currentScreen: shouldNavigateToProjects ? 'projects' : 'groups',
-      selectedGroupId: shouldNavigateToProjects ? lastVisitedGroupId : null,
-      registrationMessage: undefined, // Clear the registration message
+      registrationMessage: undefined,
     }));
   };
 
@@ -222,21 +220,16 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await apiService.logout();
+    await supabaseService.logout();
     // Clear the last visited group on logout
     await AsyncStorage.removeItem('lastVisitedGroupId');
-    setState(prev => ({
-      ...prev,
-      user: null,
-      token: null,
-      currentScreen: 'login',
-      selectedGroupId: null,
-    }));
+    // The auth state change listener will handle updating the UI
   };
 
   const handleUserUpdate = (updatedUser: User) => {
     setState(prev => ({ ...prev, user: updatedUser }));
   };
+
 
   const navigateToScreen = async (screen: Screen, groupId?: string) => {
     // Store the last visited group when navigating to projects
@@ -377,13 +370,6 @@ export default function App() {
   return (
     <PaperProvider theme={theme}>
       <View style={styles.container}>
-        {state.isDemoMode && (
-          <Banner visible={true} style={styles.demoBanner}>
-            <Text style={styles.demoBannerText}>
-              🔧 Demo Mode - Data is not persisted
-            </Text>
-          </Banner>
-        )}
         {renderScreen()}
       </View>
     </PaperProvider>
@@ -400,15 +386,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
-  },
-  demoBanner: {
-    backgroundColor: colors.warning + '20', // 20% opacity
-    borderBottomWidth: 1,
-    borderBottomColor: colors.warning + '40', // 40% opacity
-  },
-  demoBannerText: {
-    color: colors.warning,
-    fontSize: 14,
-    fontWeight: '500',
   },
 });

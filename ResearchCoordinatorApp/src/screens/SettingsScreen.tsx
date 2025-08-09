@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { Appbar, Card, Title, TextInput, Button, Snackbar, ActivityIndicator } from 'react-native-paper';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 
 interface SettingsScreenProps {
   onNavigateBack: () => void;
@@ -23,34 +23,57 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ onNavigateBack }) => {
   };
 
   const handleChangePassword = async () => {
+    console.log('handleChangePassword called');
+    
     if (!currentPassword || !newPassword || !confirmPassword) {
+      console.log('Validation failed: missing fields');
       showSnackbar('Please fill in all fields', 'red');
       return;
     }
 
     if (newPassword !== confirmPassword) {
+      console.log('Validation failed: passwords do not match');
       showSnackbar('New passwords do not match', 'red');
       return;
     }
 
     if (newPassword.length < 6) {
+      console.log('Validation failed: password too short');
       showSnackbar('Password must be at least 6 characters', 'red');
       return;
     }
 
+    console.log('All validations passed, setting loading to true');
     setLoading(true);
-    try {
-      await apiService.changePassword(currentPassword, newPassword);
-      showSnackbar('Password changed successfully!');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-    } catch (error) {
-      console.error('Error changing password:', error);
-      showSnackbar(error instanceof Error ? error.message : 'Failed to change password', 'red');
-    } finally {
+    
+    console.log('About to call supabaseService.changePassword');
+    
+    // Fire and forget - don't wait for the response since navigation will happen automatically
+    supabaseService.changePassword(currentPassword, newPassword).then(response => {
+      console.log('Password change response received:', response);
+    }).catch(error => {
+      console.error('Error in handleChangePassword:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to change password';
+      console.log('Showing error snackbar:', errorMessage);
+      showSnackbar(errorMessage, 'red');
       setLoading(false);
-    }
+    });
+    
+    // Show immediate feedback and clear form
+    console.log('Showing success snackbar');
+    showSnackbar('Changing password...', 'green');
+    
+    console.log('Clearing form fields');
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    
+    // Clear loading state quickly since auth state listener will handle navigation
+    console.log('Setting timeout to clear loading state');
+    setTimeout(() => {
+      console.log('Timeout reached, setting loading to false');
+      setLoading(false);
+    }, 1000);
   };
 
   return (
