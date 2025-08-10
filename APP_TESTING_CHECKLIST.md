@@ -1,9 +1,9 @@
 # App Testing Checklist 📋
 
 ## 🔐 Authentication & User Management
-- [ ] **Registration**: Create new account with email/password
-- [ ] **Email Verification**: Check email and verify account
-- [ ] **Login**: Sign in with verified credentials
+- [y] **Registration**: Create new account with email/password
+- [y] **Email Verification**: Check email and verify account
+- [y] **Login**: Sign in with verified credentials
 - [ ] **Password Reset**: Request and complete password reset flow
 - [ ] **Profile Updates**: Edit bio, upload profile picture
 - [ ] **Logout**: Sign out and ensure session is cleared
