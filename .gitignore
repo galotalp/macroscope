@@ -88,6 +88,11 @@ CREDENTIALS.txt
 *.cert
 macroscope-key.pem
 
+# Test files with sensitive data
+verify-supabase-only.js
+test-supabase-connection.js
+*test*supabase*.js
+
 # Backup files
 *.backup
 *.bak
