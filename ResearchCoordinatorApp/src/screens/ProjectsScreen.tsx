@@ -69,37 +69,8 @@ const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack
       const response = await supabaseService.getProjects(groupId);
       const projectsData = response.projects || [];
       
-      // Load details for each project to get task counts and assigned members
-      const projectsWithDetails = await Promise.all(
-        projectsData.map(async (project: Project) => {
-          try {
-            const details = await supabaseService.getProjectDetails(project.id);
-            console.log('Project details for', project.name, ':', JSON.stringify(details.members, null, 2));
-            const completedTasks = details.checklist?.filter((item: any) => item.completed).length || 0;
-            const totalTasks = details.checklist?.length || 0;
-            const assignedMembers = details.members?.map((m: any) => m.users?.username || m.username) || [];
-            
-            return {
-              ...project,
-              completedTasks,
-              totalTasks,
-              assignedMembers,
-              file_count: project.file_count || 0
-            };
-          } catch (error) {
-            console.error('Error loading project details:', error);
-            return {
-              ...project,
-              completedTasks: 0,
-              totalTasks: 0,
-              assignedMembers: [],
-              file_count: project.file_count || 0
-            };
-          }
-        })
-      );
-      
-      setProjects(projectsWithDetails);
+      // No need for additional queries - getProjects() now returns everything we need!
+      setProjects(projectsData);
     } catch (error) {
       console.error('Error loading projects:', error);
       showSnackbar(transformErrorMessage(error), 'red');

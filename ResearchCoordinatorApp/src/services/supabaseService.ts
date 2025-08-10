@@ -2,6 +2,35 @@ import { supabase } from '../config/supabase'
 import { User } from '../types'
 
 class SupabaseService {
+  // Auth cache to reduce redundant getUser() calls
+  private static userCache: { user: any; expiry: number } | null = null
+  private static CACHE_DURATION = 60 * 1000 // 1 minute
+
+  private async getCachedUser() {
+    const now = Date.now()
+    
+    // Return cached user if valid
+    if (SupabaseService.userCache && now < SupabaseService.userCache.expiry) {
+      return { data: { user: SupabaseService.userCache.user }, error: null }
+    }
+
+    // Fetch fresh user data
+    const { data, error } = await supabase.auth.getUser()
+    
+    if (!error && data.user) {
+      SupabaseService.userCache = {
+        user: data.user,
+        expiry: now + SupabaseService.CACHE_DURATION
+      }
+    }
+
+    return { data, error }
+  }
+
+  static clearAuthCache() {
+    SupabaseService.userCache = null
+  }
+
   // ==================== AUTH METHODS ====================
   
   async register(email: string, password: string, username: string) {
@@ -149,6 +178,9 @@ class SupabaseService {
 
   async logout() {
     try {
+      // Clear auth cache before logout
+      SupabaseService.clearAuthCache()
+      
       const { error } = await supabase.auth.signOut()
       if (error) {
         console.error('Logout error:', error)
@@ -179,7 +211,7 @@ class SupabaseService {
 
   async getUserProfile() {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -204,7 +236,7 @@ class SupabaseService {
 
   async updateProfile(profileData: { bio?: string; profile_picture?: string }) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -221,7 +253,10 @@ class SupabaseService {
         throw new Error(error.message)
       }
 
-      return data
+      // Clear auth cache since profile data changed
+      SupabaseService.clearAuthCache()
+      
+      return { user: data }
     } catch (error: any) {
       console.error('Error updating profile:', error)
       throw error
@@ -230,7 +265,7 @@ class SupabaseService {
 
   async uploadProfilePicture(imageUri: string, fileName: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -286,6 +321,9 @@ class SupabaseService {
         throw new Error(updateError.message)
       }
 
+      // Clear auth cache since profile data changed
+      SupabaseService.clearAuthCache()
+      
       // Return updated user object for ProfileScreen
       return { 
         user: updatedUser,
@@ -301,13 +339,13 @@ class SupabaseService {
 
   async getResearchGroups() {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
       }
 
-      // Get groups where user is a member
+      // OPTIMIZED: Single query with member count
       const { data: userGroups, error } = await supabase
         .from('group_memberships')
         .select(`
@@ -316,7 +354,8 @@ class SupabaseService {
             name,
             description,
             created_at,
-            created_by
+            created_by,
+            group_memberships(count)
           )
         `)
         .eq('user_id', user.id)
@@ -325,7 +364,11 @@ class SupabaseService {
         throw new Error(error.message)
       }
 
-      const groups = userGroups?.map((membership: any) => membership.groups) || []
+      const groups = userGroups?.map((membership: any) => ({
+        ...membership.groups,
+        member_count: membership.groups.group_memberships[0]?.count || 0
+      })) || []
+      
       return { groups }
     } catch (error: any) {
       console.error('Error fetching groups:', error)
@@ -335,7 +378,7 @@ class SupabaseService {
 
   async createResearchGroup(name: string, description: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -379,7 +422,7 @@ class SupabaseService {
 
   async getPendingJoinRequestCounts() {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -414,45 +457,83 @@ class SupabaseService {
 
   async getProjects(groupId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
       }
 
-      // Verify user is a member of the group
-      const { data: membership, error: membershipError } = await supabase
-        .from('group_memberships')
-        .select('*')
-        .eq('group_id', groupId)
-        .eq('user_id', user.id)
-        .single()
-
-      if (membershipError || !membership) {
-        throw new Error('Access denied - you are not a member of this group')
-      }
-
-      // Get projects for the group with file counts
+      // OPTIMIZED: Get projects with basic counts
       const { data: projects, error } = await supabase
         .from('projects')
         .select(`
           *,
-          project_files(count)
+          project_files(count),
+          project_members(count),
+          project_checklist_items(count),
+          groups!inner(
+            group_memberships!inner(user_id)
+          )
         `)
         .eq('group_id', groupId)
+        .eq('groups.group_memberships.user_id', user.id)
         .order('created_at', { ascending: false })
+        
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      // Get detailed data for all projects in parallel
+      const projectIds = projects?.map(p => p.id) || []
+      
+      const [membersData, checklistData] = await Promise.all([
+        // Get member usernames for all projects
+        supabase
+          .from('project_members')
+          .select('project_id, users!user_id(username)')
+          .in('project_id', projectIds),
+        // Get checklist completion status for all projects
+        supabase
+          .from('project_checklist_items')
+          .select('project_id, completed')
+          .in('project_id', projectIds)
+      ])
 
       if (error) {
         throw new Error(error.message)
       }
 
-      // Process projects to include file counts and sort by priority
-      const processedProjects = projects?.map(project => ({
-        ...project,
-        file_count: project.project_files?.[0]?.count || 0
-      })) || []
+      // Process projects to include all data that ProjectsScreen needs
+      const processedProjects = projects?.map(project => {
+        // Get checklist data for this project
+        const projectChecklistItems = checklistData.data?.filter(item => item.project_id === project.id) || []
+        const completedTasks = projectChecklistItems.filter(item => item.completed).length
+        const totalTasks = projectChecklistItems.length
 
-      // Sort by priority
+        // Get member names for this project
+        const projectMembers = membersData.data?.filter(member => member.project_id === project.id) || []
+        const assignedMembers = projectMembers
+          .map(member => member.users?.username)
+          .filter(Boolean)
+
+        return {
+          ...project,
+          file_count: project.project_files?.[0]?.count || 0,
+          member_count: project.project_members?.[0]?.count || 0,
+          checklist_count: project.project_checklist_items?.[0]?.count || 0,
+          // Add the data ProjectsScreen needs
+          completedTasks,
+          totalTasks,
+          assignedMembers,
+          // Remove nested objects we don't need
+          project_files: undefined,
+          project_members: undefined,
+          project_checklist_items: undefined,
+          groups: undefined
+        }
+      }) || []
+
+      // Sort by priority (moved client-side for better performance)
       const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 }
       const sortedProjects = processedProjects.sort((a, b) => {
         const aPriority = priorityOrder[a.priority as keyof typeof priorityOrder] || 2
@@ -481,7 +562,7 @@ class SupabaseService {
     memberIds?: string[];
   }) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -573,14 +654,14 @@ class SupabaseService {
 
   async getProjectDetails(projectId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
       }
 
-      // Get project with group membership verification
-      const { data: project, error } = await supabase
+      // SINGLE OPTIMIZED QUERY: Get everything at once!
+      const { data: projectData, error } = await supabase
         .from('projects')
         .select(`
           *,
@@ -588,62 +669,65 @@ class SupabaseService {
             id,
             name,
             group_memberships!inner(user_id)
+          ),
+          project_members(
+            role,
+            users!user_id (
+              id,
+              username,
+              email,
+              profile_picture
+            )
+          ),
+          project_checklist_items(
+            id,
+            title,
+            description,
+            completed,
+            created_by,
+            created_at,
+            updated_at
+          ),
+          project_files(
+            id,
+            filename,
+            original_name,
+            file_size,
+            mime_type,
+            public_url,
+            uploaded_at,
+            users!uploaded_by (
+              id,
+              username,
+              email
+            )
           )
         `)
         .eq('id', projectId)
         .eq('groups.group_memberships.user_id', user.id)
         .single()
 
-      if (error || !project) {
+      if (error || !projectData) {
         throw new Error('Project not found or access denied')
       }
 
-      // Get project members
-      const { data: projectMembers } = await supabase
-        .from('project_members')
-        .select(`
-          role,
-          users!user_id (
-            id,
-            username,
-            email,
-            profile_picture
-          )
-        `)
-        .eq('project_id', projectId)
-
       // Format members to match frontend expectations
-      const members = projectMembers?.map(pm => ({
+      const members = projectData.project_members?.map(pm => ({
         users: pm.users,
         role: pm.role
       })) || []
 
-      // Get checklist items
-      const { data: checklistItems } = await supabase
-        .from('project_checklist_items')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false })
-
-      // Get project files
-      const { data: projectFiles } = await supabase
-        .from('project_files')
-        .select(`
-          *,
-          users!uploaded_by (
-            id,
-            username,
-            email
-          )
-        `)
-        .eq('project_id', projectId)
-        .order('uploaded_at', { ascending: false })
-
       return { 
-        project,
-        members: members || [],
-        checklist: checklistItems || [],
-        files: projectFiles || []
+        project: {
+          ...projectData,
+          project_members: undefined,
+          project_checklist_items: undefined,
+          project_files: undefined,
+          groups: undefined
+        },
+        members,
+        checklist: projectData.project_checklist_items || [],
+        files: projectData.project_files || []
       }
     } catch (error: any) {
       console.error('Error fetching project details:', error)
@@ -653,7 +737,7 @@ class SupabaseService {
 
   async getProjectMembers(groupId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -691,7 +775,7 @@ class SupabaseService {
     notes?: string;
   }) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -721,7 +805,7 @@ class SupabaseService {
 
   async deleteProject(projectId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -769,7 +853,7 @@ class SupabaseService {
 
   async getGroupDetails(groupId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -859,7 +943,7 @@ class SupabaseService {
 
   async respondToJoinRequest(groupId: string, requestId: string, action: 'approve' | 'reject') {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -888,7 +972,7 @@ class SupabaseService {
 
   async removeMemberFromGroup(groupId: string, userId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -952,7 +1036,7 @@ class SupabaseService {
 
   async updateResearchGroup(groupId: string, data: { name?: string; description?: string }) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -991,7 +1075,7 @@ class SupabaseService {
 
   async deleteResearchGroup(groupId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1028,7 +1112,7 @@ class SupabaseService {
 
   async searchGroups(query: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1076,7 +1160,7 @@ class SupabaseService {
 
   async getAvailableGroups() {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1123,7 +1207,7 @@ class SupabaseService {
 
   async requestToJoinGroup(groupId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1201,7 +1285,7 @@ class SupabaseService {
   // Add a method to refresh user data explicitly
   async refreshUserData() {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1224,7 +1308,7 @@ class SupabaseService {
 
   async addChecklistItem(projectId: string, title: string, description?: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1282,7 +1366,7 @@ class SupabaseService {
     completed?: boolean;
   }) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1314,7 +1398,7 @@ class SupabaseService {
 
   async deleteChecklistItem(projectId: string, itemId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1362,7 +1446,7 @@ class SupabaseService {
     try {
       console.log('File object received:', file)
 
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1443,7 +1527,7 @@ class SupabaseService {
 
   async getProjectFiles(projectId: string, sortBy: string = 'uploaded_at', sortOrder: string = 'desc') {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1472,7 +1556,7 @@ class SupabaseService {
 
   async downloadProjectFile(projectId: string, fileId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1512,7 +1596,7 @@ class SupabaseService {
 
   async deleteProjectFile(projectId: string, fileId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1560,7 +1644,7 @@ class SupabaseService {
 
   async addProjectMember(projectId: string, userId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1639,7 +1723,7 @@ class SupabaseService {
 
   async removeProjectMember(projectId: string, userId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1695,7 +1779,7 @@ class SupabaseService {
 
   async getAvailableProjectMembers(projectId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1746,7 +1830,7 @@ class SupabaseService {
 
   async getGroupDefaultChecklistItems(groupId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1772,7 +1856,7 @@ class SupabaseService {
 
   async addGroupDefaultChecklistItem(groupId: string, title: string, description?: string, displayOrder?: number) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1836,7 +1920,7 @@ class SupabaseService {
     display_order?: number;
   }) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1866,7 +1950,7 @@ class SupabaseService {
 
   async deleteGroupDefaultChecklistItem(itemId: string) {
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      const { data: { user }, error: authError } = await this.getCachedUser()
       
       if (authError || !user) {
         throw new Error('Not authenticated')
@@ -1900,7 +1984,7 @@ class SupabaseService {
 
   // Get current user session
   async getCurrentUser() {
-    const { data: { user }, error } = await supabase.auth.getUser()
+    const { data: { user }, error } = await this.getCachedUser()
     if (error || !user) {
       return null
     }
