@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
   },
   emailText: {
     fontSize: typography.fontSize.md,
-    fontWeight: typography.fontWeight.semiBold,
+    fontWeight: typography.fontWeight.semibold,
     color: colors.primary,
   },
   instructionText: {

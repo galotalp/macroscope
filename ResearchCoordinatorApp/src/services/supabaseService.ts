@@ -118,7 +118,8 @@ class SupabaseService {
         username: userProfile?.username || data.user.user_metadata?.username || 'Unknown',
         email: data.user.email || email,
         bio: userProfile?.bio,
-        profile_picture: userProfile?.profile_picture
+        profile_picture: userProfile?.profile_picture,
+        created_at: data.user.created_at
       }
 
       return {
@@ -499,8 +500,8 @@ class SupabaseService {
           .in('project_id', projectIds)
       ])
 
-      if (error) {
-        throw new Error(error.message)
+      if (membersData.error || checklistData.error) {
+        throw new Error(membersData.error?.message || checklistData.error?.message || 'Failed to fetch project details')
       }
 
       // Process projects to include all data that ProjectsScreen needs
@@ -513,7 +514,7 @@ class SupabaseService {
         // Get member names for this project
         const projectMembers = membersData.data?.filter(member => member.project_id === project.id) || []
         const assignedMembers = projectMembers
-          .map(member => member.users?.username)
+          .map((member: any) => member.users?.username)
           .filter(Boolean)
 
         return {
@@ -712,7 +713,7 @@ class SupabaseService {
       }
 
       // Format members to match frontend expectations
-      const members = projectData.project_members?.map(pm => ({
+      const members = projectData.project_members?.map((pm: any) => ({
         users: pm.users,
         role: pm.role
       })) || []

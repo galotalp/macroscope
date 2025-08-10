@@ -132,9 +132,8 @@ export default function App() {
             isLoading: false,
           }));
         }
-      } else if (event !== 'SIGNED_OUT') {
-        // Only update to logged out state if this isn't already a SIGNED_OUT event
-        // (to avoid duplicate state updates)
+      } else {
+        // No session - user is logged out
         setState(prev => ({
           ...prev,
           user: null,
