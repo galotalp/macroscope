@@ -43,9 +43,26 @@ export default function App() {
   });
 
   useEffect(() => {
+    // Set a timeout to prevent infinite loading
+    const loadingTimeout = setTimeout(() => {
+      if (state.isLoading) {
+        console.warn('Loading timeout - forcing navigation to login');
+        setState(prev => ({
+          ...prev,
+          isLoading: false,
+          currentScreen: 'login',
+          user: null,
+          session: null,
+        }));
+      }
+    }, 10000); // 10 second timeout
+    
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', event, session?.user?.id);
+      
+      // Clear the loading timeout since we got a response
+      clearTimeout(loadingTimeout);
       
       // For USER_UPDATED events (like password changes), navigate to groups immediately
       // Don't try to refresh user data during this event as it can cause hangs
@@ -61,6 +78,20 @@ export default function App() {
           isLoading: false,
         }));
         console.log('State updated successfully');
+        return;
+      }
+      
+      // For SIGNED_OUT events, immediately go to login without waiting
+      if (event === 'SIGNED_OUT') {
+        console.log('User signed out - navigating to login');
+        setState(prev => ({
+          ...prev,
+          user: null,
+          session: null,
+          currentScreen: 'login',
+          selectedGroupId: null,
+          isLoading: false,
+        }));
         return;
       }
       
@@ -101,8 +132,9 @@ export default function App() {
             isLoading: false,
           }));
         }
-      } else {
-        // User is signed out
+      } else if (event !== 'SIGNED_OUT') {
+        // Only update to logged out state if this isn't already a SIGNED_OUT event
+        // (to avoid duplicate state updates)
         setState(prev => ({
           ...prev,
           user: null,
@@ -117,19 +149,74 @@ export default function App() {
     // Check initial session
     checkInitialSession();
     
-    // Clean up subscription
+    // Clean up subscription and timeout
     return () => {
+      clearTimeout(loadingTimeout);
       subscription?.unsubscribe();
     };
   }, []);
 
   const checkInitialSession = async () => {
     try {
+      console.log('Checking initial session...');
       const { data: { session } } = await supabase.auth.getSession();
-      // The auth state change listener will handle the session
+      
+      if (session?.user) {
+        console.log('Found existing session for user:', session.user.id);
+        // Session exists, load user profile
+        try {
+          const userProfile = await supabaseService.getUserProfile();
+          
+          // Check for last visited group
+          const lastVisitedGroupId = await AsyncStorage.getItem('lastVisitedGroupId');
+          let shouldNavigateToProjects = false;
+          
+          if (lastVisitedGroupId) {
+            try {
+              await supabaseService.getProjects(lastVisitedGroupId);
+              shouldNavigateToProjects = true;
+            } catch (error) {
+              console.log('User no longer has access to last visited group, clearing it');
+              await AsyncStorage.removeItem('lastVisitedGroupId');
+            }
+          }
+          
+          setState(prev => ({
+            ...prev,
+            user: userProfile.user,
+            session: session,
+            currentScreen: shouldNavigateToProjects ? 'projects' : 'groups',
+            selectedGroupId: shouldNavigateToProjects ? lastVisitedGroupId : null,
+            isLoading: false,
+          }));
+        } catch (error) {
+          console.error('Error loading user profile:', error);
+          setState(prev => ({
+            ...prev,
+            user: null,
+            session: null,
+            currentScreen: 'login',
+            isLoading: false,
+          }));
+        }
+      } else {
+        console.log('No existing session found');
+        // No session, go to login
+        setState(prev => ({
+          ...prev,
+          user: null,
+          session: null,
+          currentScreen: 'login',
+          isLoading: false,
+        }));
+      }
     } catch (error) {
       console.error('Error checking initial session:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      setState(prev => ({ 
+        ...prev, 
+        isLoading: false,
+        currentScreen: 'login',
+      }));
     }
   };
 
@@ -289,11 +376,12 @@ export default function App() {
             email={state.pendingVerificationEmail!}
             password={state.pendingVerificationPassword}
             onNavigateBack={() => navigateToScreen('register')}
-            onNavigateToLogin={() => {
+            onNavigateToLogin={(verified) => {
               setState(prev => ({
                 ...prev,
                 currentScreen: 'login',
-                registrationMessage: 'Account verified! Please log in.',
+                // Only show verification message if actually verified
+                registrationMessage: verified ? 'Account verified! Please log in.' : undefined,
                 pendingVerificationEmail: undefined,
                 pendingVerificationPassword: undefined,
               }));

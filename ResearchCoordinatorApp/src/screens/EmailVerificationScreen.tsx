@@ -11,7 +11,7 @@ interface EmailVerificationScreenProps {
   email: string;
   password?: string;
   onNavigateBack: () => void;
-  onNavigateToLogin: () => void;
+  onNavigateToLogin: (verified?: boolean) => void;
 }
 
 const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({ 
@@ -78,7 +78,7 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
         
         // Wait a moment to show the success message, then go to login
         setTimeout(() => {
-          onNavigateToLogin();
+          onNavigateToLogin(true); // Pass true to indicate successful verification
         }, 2000);
       } else if (!isAutoCheck) {
         // Only show "not verified" message for manual checks, not auto-checks
@@ -175,7 +175,7 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
 
               <Button
                 mode="outlined"
-                onPress={onNavigateToLogin}
+                onPress={() => onNavigateToLogin(false)} // Pass false when manually going back
                 style={styles.loginButton}
                 disabled={loading || checkingStatus}
                 textColor={colors.primary}

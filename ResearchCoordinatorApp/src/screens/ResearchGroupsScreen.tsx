@@ -39,16 +39,30 @@ const ResearchGroupsScreen: React.FC<ResearchGroupsScreenProps> = ({
   const [groupsWithPendingRequests, setGroupsWithPendingRequests] = useState<any[]>([]);
 
   useEffect(() => {
-    loadGroups();
-  }, []);
+    // Only load groups if user is authenticated
+    if (user) {
+      loadGroups();
+    }
+  }, [user]);
 
   const loadGroups = async () => {
+    // Extra safety check - don't load if no user
+    if (!user) {
+      console.log('No user found, skipping group load');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+    
     try {
       const response = await supabaseService.getResearchGroups();
       setGroups(response.groups || []);
     } catch (error) {
       console.error('Error loading groups:', error);
-      showSnackbar(transformErrorMessage(error), 'red');
+      // Only show error if it's not an auth error (user might be logging out)
+      if (!error?.message?.includes('Not authenticated')) {
+        showSnackbar(transformErrorMessage(error), 'red');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -59,12 +73,20 @@ const ResearchGroupsScreen: React.FC<ResearchGroupsScreenProps> = ({
   };
 
   const loadPendingRequestsCount = async () => {
+    // Extra safety check - don't load if no user
+    if (!user) {
+      return;
+    }
+    
     try {
       const response = await supabaseService.getPendingJoinRequestCounts();
       setPendingRequestsCount(response.totalPendingRequests || 0);
       setGroupsWithPendingRequests(response.groupCounts || []);
     } catch (error) {
-      console.error('Error loading pending requests count:', error);
+      // Only log error if it's not an auth error
+      if (!error?.message?.includes('Not authenticated')) {
+        console.error('Error loading pending requests count:', error);
+      }
       // Don't show error for this, as it's not critical
     }
   };
