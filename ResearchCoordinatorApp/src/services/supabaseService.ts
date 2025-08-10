@@ -432,10 +432,13 @@ class SupabaseService {
         throw new Error('Access denied - you are not a member of this group')
       }
 
-      // Get projects for the group
+      // Get projects for the group with file counts
       const { data: projects, error } = await supabase
         .from('projects')
-        .select('*')
+        .select(`
+          *,
+          project_files(count)
+        `)
         .eq('group_id', groupId)
         .order('created_at', { ascending: false })
 
@@ -443,9 +446,15 @@ class SupabaseService {
         throw new Error(error.message)
       }
 
+      // Process projects to include file counts and sort by priority
+      const processedProjects = projects?.map(project => ({
+        ...project,
+        file_count: project.project_files?.[0]?.count || 0
+      })) || []
+
       // Sort by priority
       const priorityOrder = { 'urgent': 4, 'high': 3, 'medium': 2, 'low': 1 }
-      const sortedProjects = projects?.sort((a, b) => {
+      const sortedProjects = processedProjects.sort((a, b) => {
         const aPriority = priorityOrder[a.priority as keyof typeof priorityOrder] || 2
         const bPriority = priorityOrder[b.priority as keyof typeof priorityOrder] || 2
         
@@ -454,7 +463,7 @@ class SupabaseService {
         }
         
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      }) || []
+      })
 
       return { projects: sortedProjects }
     } catch (error: any) {

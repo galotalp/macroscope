@@ -53,6 +53,7 @@ export const colors = {
   priorityHigh: '#ef4444',
   priorityMedium: '#f59e0b',
   priorityLow: '#10b981',
+  priorityCompleted: '#3b82f6', // Blue for completed projects
   priorityNone: '#6b7280',
 };
 
@@ -306,6 +307,10 @@ export const componentStyles = {
     },
     low: {
       backgroundColor: colors.priorityLow,
+      color: colors.textInverse,
+    },
+    completed: {
+      backgroundColor: colors.priorityCompleted,
       color: colors.textInverse,
     },
     none: {

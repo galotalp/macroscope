@@ -379,6 +379,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
       case 'high': return colors.priorityHigh;
       case 'medium': return colors.priorityMedium;
       case 'low': return colors.priorityLow;
+      case 'completed': return colors.priorityCompleted;
       default: return colors.priorityNone;
     }
   };
@@ -498,7 +499,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
                 <View style={styles.prioritySelector}>
                   <Text style={styles.label}>Priority:</Text>
                   <View style={styles.priorityButtons}>
-                    {['low', 'medium', 'high'].map((priority) => (
+                    {['high', 'medium', 'low', 'completed'].map((priority) => (
                       <TouchableOpacity
                         key={priority}
                         onPress={() => setEditedProject({ ...editedProject, priority })}
@@ -564,61 +565,6 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
                   Tasks Completed: {getCompletedTasksCount()} / {checklist.length}
                 </Text>
               </>
-            )}
-          </Card.Content>
-        </Card>
-
-        <Card style={styles.sectionCard}>
-          <Card.Content>
-            <View style={styles.sectionHeader}>
-              <Title style={styles.sectionTitle}>Team Members</Title>
-              <IconButton
-                icon="plus"
-                size={24}
-                onPress={() => {
-                  loadAvailableMembers();
-                  setShowAddMemberDialog(true);
-                }}
-              />
-            </View>
-            {members.length === 0 ? (
-              <Text style={styles.emptyText}>No team members assigned</Text>
-            ) : (
-              members.map((member, index) => {
-                const user = member.users || member;
-                const getInitials = (name: string): string => {
-                  return name
-                    .split(' ')
-                    .map((word) => word.charAt(0))
-                    .join('')
-                    .toUpperCase()
-                    .slice(0, 2);
-                };
-                
-                return (
-                  <List.Item
-                    key={user.id || index}
-                    title={user.username || 'Unknown User'}
-                    description={user.email || ''}
-                    left={() => (
-                      <View style={styles.memberAvatar}>
-                        <UserAvatar
-                          profilePictureUrl={user.profile_picture}
-                          username={user.username}
-                          size={40}
-                        />
-                      </View>
-                    )}
-                    right={() => (
-                      <IconButton
-                        icon="close"
-                        size={20}
-                        onPress={() => handleRemoveMember(user.id, user.username)}
-                      />
-                    )}
-                  />
-                );
-              })
             )}
           </Card.Content>
         </Card>
@@ -731,6 +677,61 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
                   </View>
                 </View>
               ))
+            )}
+          </Card.Content>
+        </Card>
+
+        <Card style={styles.sectionCard}>
+          <Card.Content>
+            <View style={styles.sectionHeader}>
+              <Title style={styles.sectionTitle}>Team Members</Title>
+              <IconButton
+                icon="plus"
+                size={24}
+                onPress={() => {
+                  loadAvailableMembers();
+                  setShowAddMemberDialog(true);
+                }}
+              />
+            </View>
+            {members.length === 0 ? (
+              <Text style={styles.emptyText}>No team members assigned</Text>
+            ) : (
+              members.map((member, index) => {
+                const user = member.users || member;
+                const getInitials = (name: string): string => {
+                  return name
+                    .split(' ')
+                    .map((word) => word.charAt(0))
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2);
+                };
+                
+                return (
+                  <List.Item
+                    key={user.id || index}
+                    title={user.username || 'Unknown User'}
+                    description={user.email || ''}
+                    left={() => (
+                      <View style={styles.memberAvatar}>
+                        <UserAvatar
+                          profilePictureUrl={user.profile_picture}
+                          username={user.username}
+                          size={40}
+                        />
+                      </View>
+                    )}
+                    right={() => (
+                      <IconButton
+                        icon="close"
+                        size={20}
+                        onPress={() => handleRemoveMember(user.id, user.username)}
+                      />
+                    )}
+                  />
+                );
+              })
             )}
           </Card.Content>
         </Card>
@@ -1045,6 +1046,7 @@ const styles = StyleSheet.create({
   },
   priorityButtons: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   priorityButton: {

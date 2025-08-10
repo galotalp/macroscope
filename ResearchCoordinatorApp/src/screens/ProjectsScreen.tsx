@@ -23,12 +23,14 @@ interface Project {
   notes?: string;
   status?: string;
   group_id: string;
+  file_count?: number;
 }
 
 interface ProjectWithDetails extends Project {
   completedTasks?: number;
   totalTasks?: number;
   assignedMembers?: string[];
+  file_count?: number;
 }
 
 const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack }) => {
@@ -81,7 +83,8 @@ const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack
               ...project,
               completedTasks,
               totalTasks,
-              assignedMembers
+              assignedMembers,
+              file_count: project.file_count || 0
             };
           } catch (error) {
             console.error('Error loading project details:', error);
@@ -89,7 +92,8 @@ const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack
               ...project,
               completedTasks: 0,
               totalTasks: 0,
-              assignedMembers: []
+              assignedMembers: [],
+              file_count: project.file_count || 0
             };
           }
         })
@@ -130,6 +134,7 @@ const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack
       case 'high': return colors.priorityHigh;
       case 'medium': return colors.priorityMedium;
       case 'low': return colors.priorityLow;
+      case 'completed': return colors.priorityCompleted;
       default: return colors.priorityNone;
     }
   };
@@ -139,9 +144,163 @@ const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack
       case 'high': return 'High';
       case 'medium': return 'Med';
       case 'low': return 'Low';
+      case 'completed': return 'Completed';
       default: return 'None';
     }
   };
+
+  const groupProjectsByPriority = () => {
+    const grouped = {
+      high: projects.filter(p => p.priority === 'high'),
+      medium: projects.filter(p => p.priority === 'medium'),
+      low: projects.filter(p => p.priority === 'low'),
+      completed: projects.filter(p => p.priority === 'completed'),
+    };
+    return grouped;
+  };
+
+  const renderProjectsByPriority = () => {
+    const grouped = groupProjectsByPriority();
+    
+    return (
+      <View style={styles.prioritySections}>
+        {/* High Priority Section */}
+        {grouped.high.length > 0 && (
+          <Card style={[styles.priorityCard, styles.highPriorityCard]}>
+            <View style={[styles.sectionHeader, styles.highPriorityHeader]}>
+              <Text style={styles.sectionTitle}>High Priority ({grouped.high.length})</Text>
+            </View>
+            <DataTable>
+              <DataTable.Header style={styles.tableHeader}>
+                <DataTable.Title style={styles.nameColumn} textStyle={styles.headerText}>
+                  Project Name
+                </DataTable.Title>
+                <DataTable.Title numeric style={styles.tasksColumn} textStyle={styles.headerText}>
+                  Tasks
+                </DataTable.Title>
+                <DataTable.Title style={styles.assignedColumn} textStyle={styles.headerText}>
+                  Members
+                </DataTable.Title>
+                <DataTable.Title numeric style={styles.filesColumn} textStyle={styles.headerText}>
+                  Files
+                </DataTable.Title>
+              </DataTable.Header>
+              {grouped.high.map((project) => renderProjectRow(project))}
+            </DataTable>
+          </Card>
+        )}
+
+        {/* Medium Priority Section */}
+        {grouped.medium.length > 0 && (
+          <Card style={[styles.priorityCard, styles.mediumPriorityCard]}>
+            <View style={[styles.sectionHeader, styles.mediumPriorityHeader]}>
+              <Text style={styles.sectionTitle}>Medium Priority ({grouped.medium.length})</Text>
+            </View>
+            <DataTable>
+              <DataTable.Header style={styles.tableHeader}>
+                <DataTable.Title style={styles.nameColumn} textStyle={styles.headerText}>
+                  Project Name
+                </DataTable.Title>
+                <DataTable.Title numeric style={styles.tasksColumn} textStyle={styles.headerText}>
+                  Tasks
+                </DataTable.Title>
+                <DataTable.Title style={styles.assignedColumn} textStyle={styles.headerText}>
+                  Members
+                </DataTable.Title>
+                <DataTable.Title numeric style={styles.filesColumn} textStyle={styles.headerText}>
+                  Files
+                </DataTable.Title>
+              </DataTable.Header>
+              {grouped.medium.map((project) => renderProjectRow(project))}
+            </DataTable>
+          </Card>
+        )}
+
+        {/* Low Priority Section */}
+        {grouped.low.length > 0 && (
+          <Card style={[styles.priorityCard, styles.lowPriorityCard]}>
+            <View style={[styles.sectionHeader, styles.lowPriorityHeader]}>
+              <Text style={styles.sectionTitle}>Low Priority ({grouped.low.length})</Text>
+            </View>
+            <DataTable>
+              <DataTable.Header style={styles.tableHeader}>
+                <DataTable.Title style={styles.nameColumn} textStyle={styles.headerText}>
+                  Project Name
+                </DataTable.Title>
+                <DataTable.Title numeric style={styles.tasksColumn} textStyle={styles.headerText}>
+                  Tasks
+                </DataTable.Title>
+                <DataTable.Title style={styles.assignedColumn} textStyle={styles.headerText}>
+                  Members
+                </DataTable.Title>
+                <DataTable.Title numeric style={styles.filesColumn} textStyle={styles.headerText}>
+                  Files
+                </DataTable.Title>
+              </DataTable.Header>
+              {grouped.low.map((project) => renderProjectRow(project))}
+            </DataTable>
+          </Card>
+        )}
+
+        {/* Completed Priority Section */}
+        {grouped.completed.length > 0 && (
+          <Card style={[styles.priorityCard, styles.completedPriorityCard]}>
+            <View style={[styles.sectionHeader, styles.completedPriorityHeader]}>
+              <Text style={styles.sectionTitle}>Completed ({grouped.completed.length})</Text>
+            </View>
+            <DataTable>
+              <DataTable.Header style={styles.tableHeader}>
+                <DataTable.Title style={styles.nameColumn} textStyle={styles.headerText}>
+                  Project Name
+                </DataTable.Title>
+                <DataTable.Title numeric style={styles.tasksColumn} textStyle={styles.headerText}>
+                  Tasks
+                </DataTable.Title>
+                <DataTable.Title style={styles.assignedColumn} textStyle={styles.headerText}>
+                  Members
+                </DataTable.Title>
+                <DataTable.Title numeric style={styles.filesColumn} textStyle={styles.headerText}>
+                  Files
+                </DataTable.Title>
+              </DataTable.Header>
+              {grouped.completed.map((project) => renderProjectRow(project))}
+            </DataTable>
+          </Card>
+        )}
+      </View>
+    );
+  };
+
+  const renderProjectRow = (project: ProjectWithDetails) => (
+    <TouchableOpacity
+      key={project.id}
+      onPress={() => setSelectedProjectId(project.id)}
+      style={styles.projectRow}
+    >
+      <DataTable.Row style={styles.dataRow}>
+        <DataTable.Cell style={styles.nameColumn}>
+          <Text style={styles.projectName}>{project.name}</Text>
+        </DataTable.Cell>
+        <DataTable.Cell numeric style={styles.tasksColumn}>
+          <Text style={styles.taskCount}>
+            {project.completedTasks}/{project.totalTasks}
+          </Text>
+        </DataTable.Cell>
+        <DataTable.Cell style={styles.assignedColumn}>
+          <Text style={styles.assignedText} numberOfLines={1} ellipsizeMode="tail">
+            {project.assignedMembers && project.assignedMembers.length > 0
+              ? `${project.assignedMembers.length} user${project.assignedMembers.length > 1 ? 's' : ''}`
+              : 'None'}
+          </Text>
+        </DataTable.Cell>
+        <DataTable.Cell numeric style={styles.filesColumn}>
+          <Text style={styles.fileCount}>
+            {project.file_count || 0}
+          </Text>
+        </DataTable.Cell>
+      </DataTable.Row>
+    </TouchableOpacity>
+  );
 
   if (showCreateProject) {
     return (
@@ -207,57 +366,7 @@ const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack
             </Text>
           </View>
         ) : (
-          <Card style={styles.tableCard}>
-            <DataTable>
-              <DataTable.Header style={styles.tableHeader}>
-                <DataTable.Title style={styles.nameColumn} textStyle={styles.headerText}>
-                  Project Name
-                </DataTable.Title>
-                <DataTable.Title numeric style={styles.tasksColumn} textStyle={styles.headerText}>
-                  Tasks
-                </DataTable.Title>
-                <DataTable.Title style={styles.assignedColumn} textStyle={styles.headerText}>
-                  Members
-                </DataTable.Title>
-                <DataTable.Title style={styles.priorityColumn} textStyle={styles.headerText}>
-                  Priority
-                </DataTable.Title>
-              </DataTable.Header>
-
-              {projects.map((project) => (
-                <TouchableOpacity
-                  key={project.id}
-                  onPress={() => setSelectedProjectId(project.id)}
-                  style={styles.projectRow}
-                >
-                  <DataTable.Row style={styles.dataRow}>
-                    <DataTable.Cell style={styles.nameColumn}>
-                      <Text style={styles.projectName}>{project.name}</Text>
-                    </DataTable.Cell>
-                    <DataTable.Cell numeric style={styles.tasksColumn}>
-                      <Text style={styles.taskCount}>
-                        {project.completedTasks}/{project.totalTasks}
-                      </Text>
-                    </DataTable.Cell>
-                    <DataTable.Cell style={styles.assignedColumn}>
-                      <Text style={styles.assignedText} numberOfLines={1} ellipsizeMode="tail">
-                        {project.assignedMembers && project.assignedMembers.length > 0
-                          ? `${project.assignedMembers.length} user${project.assignedMembers.length > 1 ? 's' : ''}`
-                          : 'None'}
-                      </Text>
-                    </DataTable.Cell>
-                    <DataTable.Cell style={styles.priorityColumn}>
-                      <View style={[styles.priorityChip, { backgroundColor: getPriorityColor(project.priority) }]}>
-                        <Text style={styles.priorityText}>
-                          {getPriorityLabel(project.priority)}
-                        </Text>
-                      </View>
-                    </DataTable.Cell>
-                  </DataTable.Row>
-                </TouchableOpacity>
-              ))}
-            </DataTable>
-          </Card>
+          renderProjectsByPriority()
         )}
       </ScrollView>
 
@@ -334,16 +443,60 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: colors.textSecondary,
   },
-  tableCard: {
+  prioritySections: {
+    marginBottom: spacing.md,
+  },
+  priorityCard: {
     marginBottom: spacing.md,
     borderRadius: borderRadius.lg,
     ...shadows.medium,
     backgroundColor: colors.surface,
   },
+  highPriorityCard: {
+    backgroundColor: 'rgba(244, 67, 54, 0.05)',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.priorityHigh,
+  },
+  mediumPriorityCard: {
+    backgroundColor: 'rgba(255, 193, 7, 0.05)',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.priorityMedium,
+  },
+  lowPriorityCard: {
+    backgroundColor: 'rgba(76, 175, 80, 0.05)',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.priorityLow,
+  },
+  completedPriorityCard: {
+    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.priorityCompleted,
+  },
+  sectionHeader: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  highPriorityHeader: {
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+  },
+  mediumPriorityHeader: {
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+  },
+  lowPriorityHeader: {
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+  },
+  completedPriorityHeader: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+  },
+  sectionTitle: {
+    fontSize: typography.fontSize.md,
+    fontWeight: typography.fontWeight.semibold,
+    color: colors.text,
+  },
   tableHeader: {
-    backgroundColor: colors.surfaceVariant,
-    borderTopLeftRadius: borderRadius.lg,
-    borderTopRightRadius: borderRadius.lg,
+    backgroundColor: 'transparent',
   },
   headerText: {
     fontSize: typography.fontSize.sm,
@@ -370,10 +523,10 @@ const styles = StyleSheet.create({
     width: 80,
     paddingHorizontal: spacing.xs,
   },
-  priorityColumn: {
-    width: 85,
+  filesColumn: {
+    width: 45,
     justifyContent: 'center',
-    paddingLeft: spacing.xs,
+    paddingHorizontal: spacing.xs,
   },
   projectName: {
     fontSize: typography.fontSize.md,
@@ -390,25 +543,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
   },
-  priorityChip: {
-    height: 32,
-    minWidth: 85,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: borderRadius.full,
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-    flexDirection: 'row',
-  },
-  priorityText: {
-    color: colors.textInverse,
-    fontSize: 11,
-    fontWeight: typography.fontWeight.bold,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-    lineHeight: 14,
-    width: '100%',
+  fileCount: {
+    fontSize: typography.fontSize.sm,
+    fontWeight: typography.fontWeight.medium,
+    color: colors.textSecondary,
   },
   fab: {
     position: 'absolute',
