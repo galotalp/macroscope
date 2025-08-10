@@ -59,7 +59,7 @@ export default function App() {
     
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.id);
+      console.log('Auth state changed:', event);
       
       // Clear the loading timeout since we got a response
       clearTimeout(loadingTimeout);
@@ -161,7 +161,7 @@ export default function App() {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
-        console.log('Found existing session for user:', session.user.id);
+        console.log('Found existing session');
         // Session exists, load user profile
         try {
           const userProfile = await supabaseService.getUserProfile();

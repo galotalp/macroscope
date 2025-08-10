@@ -89,7 +89,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
   const loadProjectDetails = async () => {
     try {
       const response = await supabaseService.getProjectDetails(projectId);
-      console.log('Project details response:', JSON.stringify(response, null, 2));
+      console.log('Project details loaded successfully');
       
       if (!response || !response.project) {
         throw new Error('Invalid project data received');

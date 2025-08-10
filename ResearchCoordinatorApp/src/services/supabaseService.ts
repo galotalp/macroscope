@@ -316,7 +316,7 @@ class SupabaseService {
         .select()
         .single()
 
-      console.log('Database update result:', { updatedUser, updateError })
+      console.log('Database update completed')
 
       if (updateError) {
         throw new Error(updateError.message)

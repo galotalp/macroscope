@@ -37,8 +37,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateBack,
   onUserUpdate,
 }) => {
-  // Debug logging
-  console.log('ProfileScreen - user object:', JSON.stringify(user, null, 2));
+  // Debug logging removed for security
   const [username, setUsername] = useState(user?.username || '');
   const [bio, setBio] = useState(user?.bio || '');
   const [loading, setLoading] = useState(false);

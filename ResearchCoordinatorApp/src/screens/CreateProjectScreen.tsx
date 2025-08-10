@@ -65,7 +65,7 @@ const CreateProjectScreen: React.FC<CreateProjectScreenProps> = ({
   const loadGroupMembers = async () => {
     try {
       const response = await supabaseService.getProjectMembers(groupId);
-      console.log('Group members response:', JSON.stringify(response, null, 2));
+      console.log('Group members loaded successfully');
       
       // Handle different possible response structures
       let members = [];

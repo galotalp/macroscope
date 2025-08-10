@@ -42,7 +42,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
       return;
     }
 
-    console.log('Attempting registration for:', email, username);
+    console.log('Attempting registration...');
     setLoading(true);
     try {
       const response = await supabaseService.register(email, password, username);

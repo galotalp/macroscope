@@ -31,7 +31,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
       return;
     }
 
-    console.log('Attempting login for:', email);
+    console.log('Attempting login...');
     setLoading(true);
     try {
       const response = await supabaseService.login(email, password);
