@@ -20,7 +20,7 @@ import {
   useTheme,
 } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 import ProfilePictureSelector from '../components/ProfilePictureSelector';
 import UserAvatar from '../components/UserAvatar';
 import { transformErrorMessage } from '../utils/errorMessages';
@@ -58,7 +58,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     }
     
     try {
-      const response = await apiService.getUserProfile();
+      const response = await supabaseService.getUserProfile();
       if (response.user) {
         onUserUpdate(response.user);
         if (showLoading) {
@@ -77,15 +77,16 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     }
   };
 
+  // Initialize form fields when component mounts
   useEffect(() => {
     if (user) {
       setUsername(user.username);
       setBio(user.bio || '');
     }
     
-    // Refresh profile data when component mounts
+    // Refresh profile data only once when component mounts
     refreshProfileData();
-  }, [user]);
+  }, []); // Remove user dependency to prevent clearing form while typing
 
   const showSnackbar = (message: string, color: string = 'green') => {
     setSnackbarMessage(message);
@@ -96,7 +97,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const handleUpdateProfile = async () => {
     setLoading(true);
     try {
-      const response = await apiService.updateUserProfile({
+      const response = await supabaseService.updateProfile({
         bio: bio.trim(),
       });
 
@@ -148,7 +149,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     setUploadingImage(true);
     try {
       const fileName = `profile_${Date.now()}.jpg`;
-      const response = await apiService.uploadProfilePicture(imageUri, fileName);
+      const response = await supabaseService.uploadProfilePicture(imageUri, fileName);
       
       if (response.user) {
         onUserUpdate(response.user);
@@ -172,7 +173,7 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
       const defaultPictureUrl = `default://${defaultPictureId}`;
       
       // Call API to set default profile picture
-      const response = await apiService.updateProfile({ 
+      const response = await supabaseService.updateProfile({ 
         bio: user?.bio,
         profile_picture: defaultPictureUrl 
       });

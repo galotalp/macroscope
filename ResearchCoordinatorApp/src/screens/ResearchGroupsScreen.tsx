@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from '
 import { Card, Title, Button, Text, FAB, Appbar, Snackbar, Badge, IconButton } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { User, ResearchGroup } from '../types';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
 import { colors, spacing, typography, shadows, borderRadius, componentStyles, textStyles } from '../theme';
 import UserMenuDropdown from '../components/UserMenuDropdown';
@@ -44,7 +44,7 @@ const ResearchGroupsScreen: React.FC<ResearchGroupsScreenProps> = ({
 
   const loadGroups = async () => {
     try {
-      const response = await apiService.getResearchGroups();
+      const response = await supabaseService.getResearchGroups();
       setGroups(response.groups || []);
     } catch (error) {
       console.error('Error loading groups:', error);
@@ -60,7 +60,7 @@ const ResearchGroupsScreen: React.FC<ResearchGroupsScreenProps> = ({
 
   const loadPendingRequestsCount = async () => {
     try {
-      const response = await apiService.getPendingJoinRequestCounts();
+      const response = await supabaseService.getPendingJoinRequestCounts();
       setPendingRequestsCount(response.totalPendingRequests || 0);
       setGroupsWithPendingRequests(response.groupCounts || []);
     } catch (error) {

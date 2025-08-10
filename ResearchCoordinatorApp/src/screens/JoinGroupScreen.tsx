@@ -11,7 +11,7 @@ import {
   Searchbar,
   Chip 
 } from 'react-native-paper';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 
 interface JoinGroupScreenProps {
   onNavigateBack: () => void;
@@ -40,7 +40,7 @@ const JoinGroupScreen: React.FC<JoinGroupScreenProps> = ({ onNavigateBack, onJoi
   const loadAvailableGroups = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getAvailableGroups();
+      const response = await supabaseService.getAvailableGroups();
       setGroups(response.groups || []);
     } catch (error) {
       console.error('Error loading available groups:', error);
@@ -60,7 +60,7 @@ const JoinGroupScreen: React.FC<JoinGroupScreenProps> = ({ onNavigateBack, onJoi
     try {
       setLoading(true);
       setHasSearched(true);
-      const response = await apiService.searchGroups(query);
+      const response = await supabaseService.searchGroups(query);
       setGroups(response.groups || []);
     } catch (error) {
       console.error('Error searching groups:', error);
@@ -84,7 +84,7 @@ const JoinGroupScreen: React.FC<JoinGroupScreenProps> = ({ onNavigateBack, onJoi
   const handleJoinGroup = async (groupId: string) => {
     setJoiningGroupId(groupId);
     try {
-      await apiService.requestToJoinGroup(groupId);
+      await supabaseService.requestToJoinGroup(groupId);
       showSnackbar('Join request sent successfully! The group owner will review your request.');
       // Don't navigate back immediately since the user needs to wait for approval
     } catch (error) {

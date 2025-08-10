@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { TextInput, Button, Card, Title, Snackbar, ActivityIndicator, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
 import { colors, spacing, typography, shadows, borderRadius } from '../theme';
 import { User } from '../types';
@@ -18,6 +18,7 @@ interface LoginScreenProps {
 const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToRegister, onNavigateToForgotPassword, onRequiresVerification, registrationMessage }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -33,7 +34,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
     console.log('Attempting login for:', email);
     setLoading(true);
     try {
-      const response = await apiService.login(email, password);
+      const response = await supabaseService.login(email, password);
       console.log('Login successful:', response);
       if (response.token && response.user) {
         onLoginSuccess(response.user, response.token);
@@ -79,6 +80,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
                 mode="outlined"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoComplete="email"
+                textContentType="emailAddress"
                 disabled={loading}
                 outlineColor={colors.borderLight}
                 activeOutlineColor={colors.primary}
@@ -90,10 +93,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
                 onChangeText={setPassword}
                 style={styles.input}
                 mode="outlined"
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 disabled={loading}
+                autoComplete="current-password"
+                textContentType="password"
                 outlineColor={colors.borderLight}
                 activeOutlineColor={colors.primary}
+                right={<TextInput.Icon 
+                  icon={showPassword ? "eye-off" : "eye"} 
+                  onPress={() => setShowPassword(!showPassword)}
+                />}
               />
 
               <Button

@@ -3,7 +3,7 @@ import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { Card, Title, Button, Text, TextInput, Snackbar, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
 import { colors, spacing, typography, shadows, borderRadius } from '../theme';
 
@@ -40,7 +40,7 @@ const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
 
     setLoading(true);
     try {
-      await apiService.forgotPassword(email.trim());
+      await supabaseService.forgotPassword(email.trim());
       setEmailSent(true);
       setSnackbarMessage('Password reset email sent! Check your inbox.');
       setSnackbarColor(colors.success);

@@ -6,7 +6,7 @@ class SupabaseService {
   
   async register(email: string, password: string, username: string) {
     try {
-      console.log('Starting registration for:', email, username)
+      // Registration started
       
       // Sign up user with Supabase Auth (skip email confirmation temporarily)
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -20,7 +20,7 @@ class SupabaseService {
         }
       })
 
-      console.log('Auth signup result:', { data: !!authData, error: authError?.message })
+      // Auth signup completed
 
       if (authError) {
         console.error('Auth error details:', authError)
@@ -32,22 +32,14 @@ class SupabaseService {
       }
 
       // User profile will be created automatically by the database trigger
-      console.log('User registered successfully:', authData.user.id)
       
-      // Wait for trigger to complete profile creation
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
       return {
         message: 'Registration successful! Please check your email to verify your account.',
         requiresVerification: true,
         email: email
       }
     } catch (error: any) {
-      console.error('Registration failed - FULL ERROR:', JSON.stringify(error, null, 2))
-      console.error('Error name:', error?.name)
-      console.error('Error message:', error?.message)
-      console.error('Error code:', error?.code)
-      console.error('Error details:', error?.details)
+      console.error('Registration failed:', error?.message)
       
       if (error.message) {
         throw new Error(`Registration failed: ${error.message}`)
@@ -59,13 +51,13 @@ class SupabaseService {
 
   async login(email: string, password: string) {
     try {
-      console.log('Attempting Supabase login for email:', email)
+      // Login attempt started
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       })
 
-      console.log('Supabase auth response:', { data: !!data, error: error?.message })
+      // Auth response received
 
       if (error) {
         console.error('Supabase auth error details:', error)
@@ -187,28 +179,22 @@ class SupabaseService {
 
   async getUserProfile() {
     try {
-      console.log('getUserProfile: Starting...');
       const { data: { user }, error: authError } = await supabase.auth.getUser()
-      console.log('getUserProfile: Got auth user:', user?.id, 'Error:', authError);
       
       if (authError || !user) {
         throw new Error('Not authenticated')
       }
 
-      console.log('getUserProfile: Querying users table for user:', user.id);
       const { data: profile, error: profileError } = await supabase
         .from('users')
         .select('id, username, email, bio, profile_picture, created_at')
         .eq('id', user.id)
         .single()
 
-      console.log('getUserProfile: Query result - Profile:', profile, 'Error:', profileError);
-
       if (profileError) {
         throw new Error(profileError.message)
       }
 
-      console.log('getUserProfile: Returning profile successfully');
       return { user: profile }
     } catch (error: any) {
       console.error('Error fetching user profile:', error)
@@ -216,7 +202,7 @@ class SupabaseService {
     }
   }
 
-  async updateUserProfile(profileData: { bio?: string }) {
+  async updateProfile(profileData: { bio?: string; profile_picture?: string }) {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser()
       
@@ -237,13 +223,9 @@ class SupabaseService {
 
       return data
     } catch (error: any) {
-      console.error('Error updating user profile:', error)
+      console.error('Error updating profile:', error)
       throw error
     }
-  }
-
-  async updateProfile(profileData: { bio?: string; profile_picture?: string }) {
-    return this.updateUserProfile(profileData)
   }
 
   async uploadProfilePicture(imageUri: string, fileName: string) {
@@ -529,8 +511,46 @@ class SupabaseService {
         throw new Error(projectError.message)
       }
 
-      // No need to manually add creator as member - database trigger handles this automatically
-      // The trigger ensures it's IMPOSSIBLE for a project to exist without its creator being a member
+      // The database trigger automatically adds the creator as an admin member
+      // Now add any additional selected members
+      if (data.memberIds && data.memberIds.length > 0) {
+        // Filter out the creator (already added by trigger) and add other members
+        const additionalMemberIds = data.memberIds.filter(memberId => memberId !== user.id)
+        
+        if (additionalMemberIds.length > 0) {
+          // Verify all users are members of the same group
+          const { data: groupMembers } = await supabase
+            .from('group_memberships')
+            .select('user_id')
+            .eq('group_id', data.groupId)
+            .in('user_id', additionalMemberIds)
+
+          const validMemberIds = groupMembers?.map(gm => gm.user_id) || []
+          
+          if (validMemberIds.length > 0) {
+            // Add all valid members to the project
+            const projectMembers = validMemberIds.map(userId => ({
+              project_id: project.id,
+              user_id: userId,
+              role: 'member',
+              added_by: user.id
+            }))
+
+            const { error: membersError } = await supabase
+              .from('project_members')
+              .insert(projectMembers)
+
+            if (membersError) {
+              console.error('Error adding project members:', membersError)
+              // Don't fail the entire project creation, just log the error
+            }
+          }
+        }
+      }
+
+      // No longer automatically copy group default checklist items here
+      // The Create Project screen handles this by allowing users to customize 
+      // the checklist items before creating the project
 
       return {
         project,
@@ -698,18 +718,35 @@ class SupabaseService {
         throw new Error('Not authenticated')
       }
 
-      // Simply try to delete - RLS policies will handle access control
-      // Only project creators can delete (as per the policy)
-      const { error: deleteError } = await supabase
+      // First check if the project exists and if the user is the creator
+      const { data: project, error: fetchError } = await supabase
         .from('projects')
-        .delete()
+        .select('id, created_by, name')
+        .eq('id', projectId)
+        .single()
+
+      if (fetchError || !project) {
+        throw new Error('Project not found')
+      }
+
+      // Check if the user is the project creator
+      if (project.created_by !== user.id) {
+        throw new Error('Access denied - only project creators can delete projects')
+      }
+
+      // Now try to delete - we know the user has permission
+      const { error: deleteError, count } = await supabase
+        .from('projects')
+        .delete({ count: 'exact' })
         .eq('id', projectId)
 
       if (deleteError) {
-        if (deleteError.message.includes('permission') || deleteError.code === '42501') {
-          throw new Error('Access denied - only project creators can delete projects')
-        }
         throw new Error(deleteError.message)
+      }
+
+      // Double-check that something was actually deleted
+      if (count === 0) {
+        throw new Error('Project could not be deleted')
       }
 
       return { message: 'Project deleted successfully' }
@@ -781,7 +818,7 @@ class SupabaseService {
           .select(`
             id,
             status,
-            created_at,
+            requested_at,
             users (
               id,
               username,
@@ -861,14 +898,40 @@ class SupabaseService {
       }
 
       // Remove the member
-      const { error: removeError } = await supabase
+      const { error: removeError, count } = await supabase
         .from('group_memberships')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('group_id', groupId)
         .eq('user_id', userId)
 
       if (removeError) {
         throw new Error(removeError.message)
+      }
+
+      if (count === 0) {
+        throw new Error('Member not found or could not be removed')
+      }
+
+      // Also remove the user from all projects in this group
+      // First get all project IDs in this group
+      const { data: groupProjects } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('group_id', groupId)
+
+      if (groupProjects && groupProjects.length > 0) {
+        const projectIds = groupProjects.map(p => p.id)
+        
+        const { error: projectRemovalError } = await supabase
+          .from('project_members')
+          .delete()
+          .eq('user_id', userId)
+          .in('project_id', projectIds)
+
+        if (projectRemovalError) {
+          console.error('Warning: Failed to remove user from group projects:', projectRemovalError)
+          // Don't fail the entire operation - the group removal was successful
+        }
       }
 
       return { message: 'Member removed successfully' }
@@ -962,18 +1025,34 @@ class SupabaseService {
         throw new Error('Not authenticated')
       }
 
-      // Search for groups by name (public groups or groups user can discover)
-      const { data: groups, error } = await supabase
+      // Get user's current groups to exclude them from search results
+      const { data: userGroupIds } = await supabase
+        .from('group_memberships')
+        .select('group_id')
+        .eq('user_id', user.id)
+
+      const memberGroupIds = userGroupIds?.map(g => g.group_id) || []
+
+      // Build the query
+      let searchQuery = supabase
         .from('groups')
         .select(`
           id,
           name,
           description,
+          invite_code,
           created_at,
           created_by
         `)
-        .ilike('name', `%${query}%`)
+        .or(`name.ilike.%${query}%,invite_code.ilike.%${query}%`)
         .limit(20)
+
+      // Only add the NOT IN clause if user has memberships
+      if (memberGroupIds.length > 0) {
+        searchQuery = searchQuery.not('id', 'in', `(${memberGroupIds.join(',')})`)
+      }
+
+      const { data: groups, error } = await searchQuery
 
       if (error) {
         throw new Error(error.message)
@@ -994,20 +1073,33 @@ class SupabaseService {
         throw new Error('Not authenticated')
       }
 
-      // Get all groups the user is NOT a member of
-      const { data: groups, error } = await supabase
+      // Get user's current groups to exclude them
+      const { data: userGroupIds } = await supabase
+        .from('group_memberships')
+        .select('group_id')
+        .eq('user_id', user.id)
+
+      const memberGroupIds = userGroupIds?.map(g => g.group_id) || []
+
+      // Build the query
+      let groupsQuery = supabase
         .from('groups')
         .select(`
           id,
           name,
           description,
+          invite_code,
           created_at,
           created_by
         `)
-        .not('id', 'in', `(
-          SELECT group_id FROM group_memberships WHERE user_id = '${user.id}'
-        )`)
         .limit(50)
+
+      // Only add the NOT IN clause if user has memberships
+      if (memberGroupIds.length > 0) {
+        groupsQuery = groupsQuery.not('id', 'in', `(${memberGroupIds.join(',')})`)
+      }
+
+      const { data: groups, error } = await groupsQuery
 
       if (error) {
         throw new Error(error.message)
@@ -1078,29 +1170,21 @@ class SupabaseService {
 
   async changePassword(currentPassword: string, newPassword: string) {
     try {
-      console.log('supabaseService.changePassword called with currentPassword length:', currentPassword.length, 'newPassword length:', newPassword.length)
-      
-      console.log('About to call supabase.auth.updateUser')
       // Simply update the password - Supabase handles validation internally
       const { data: updateData, error: updateError } = await supabase.auth.updateUser({
         password: newPassword
       })
 
-      console.log('supabase.auth.updateUser completed. Error:', updateError, 'Data:', updateData)
-
       if (updateError) {
-        console.error('Update error occurred:', updateError)
         throw new Error(updateError.message)
       }
-
-      console.log('Password updated successfully, returning response')
 
       return { 
         message: 'Password changed successfully',
         user: updateData?.user
       }
     } catch (error: any) {
-      console.error('Error in changePassword service:', error)
+      console.error('Error changing password:', error)
       throw new Error(error.message || 'Failed to change password')
     }
   }
@@ -1228,9 +1312,9 @@ class SupabaseService {
       }
 
       // Delete checklist item - RLS policies will handle access control
-      const { error: deleteError } = await supabase
+      const { error: deleteError, count } = await supabase
         .from('project_checklist_items')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('id', itemId)
         .eq('project_id', projectId)
 
@@ -1239,6 +1323,11 @@ class SupabaseService {
           throw new Error('Access denied - you do not have permission to delete this checklist item')
         }
         throw new Error(deleteError.message)
+      }
+
+      // Check if any rows were actually deleted
+      if (count === 0) {
+        throw new Error('Checklist item not found or access denied')
       }
 
       return { message: 'Checklist item deleted successfully' }
@@ -1251,39 +1340,11 @@ class SupabaseService {
   // ==================== PROJECT ASSIGNMENT METHODS ====================
 
   async assignUserToProject(projectId: string, userId: string) {
-    try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      
-      if (authError || !user) {
-        throw new Error('Not authenticated')
-      }
-
-      // For now, we'll store project assignments in a simple way
-      // You could create a project_assignments table, but for simplicity
-      // we might just use the existing structure or add it to projects metadata
-      
-      // This is a placeholder - you might want to implement a proper assignment system
-      throw new Error('Project assignment feature not fully implemented yet')
-    } catch (error: any) {
-      console.error('Error assigning user to project:', error)
-      throw error
-    }
+    return this.addProjectMember(projectId, userId)
   }
 
   async removeUserFromProject(projectId: string, userId: string) {
-    try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      
-      if (authError || !user) {
-        throw new Error('Not authenticated')
-      }
-
-      // This is a placeholder - you might want to implement a proper assignment system
-      throw new Error('Project assignment feature not fully implemented yet')
-    } catch (error: any) {
-      console.error('Error removing user from project:', error)
-      throw error
-    }
+    return this.removeProjectMember(projectId, userId)
   }
 
   // ==================== FILE METHODS ====================
@@ -1482,6 +1543,346 @@ class SupabaseService {
       return { message: 'File deleted successfully' }
     } catch (error: any) {
       console.error('File deletion failed:', error)
+      throw error
+    }
+  }
+
+  // ==================== PROJECT MEMBER METHODS ====================
+
+  async addProjectMember(projectId: string, userId: string) {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Verify the user being added is a member of the same group
+      const { data: project } = await supabase
+        .from('projects')
+        .select('group_id, created_by')
+        .eq('id', projectId)
+        .single()
+
+      if (!project) {
+        throw new Error('Project not found')
+      }
+
+      // Check if the user being added is a member of the project's group
+      const { data: groupMembership } = await supabase
+        .from('group_memberships')
+        .select('id')
+        .eq('group_id', project.group_id)
+        .eq('user_id', userId)
+        .single()
+
+      if (!groupMembership) {
+        throw new Error('User is not a member of this project\'s group')
+      }
+
+      // Check if user is already a project member
+      const { data: existingMember } = await supabase
+        .from('project_members')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('user_id', userId)
+        .single()
+
+      if (existingMember) {
+        throw new Error('User is already a member of this project')
+      }
+
+      // Add the user as a project member
+      const { data: newMember, error: insertError } = await supabase
+        .from('project_members')
+        .insert({
+          project_id: projectId,
+          user_id: userId,
+          role: 'member',
+          added_by: user.id
+        })
+        .select(`
+          id,
+          role,
+          created_at,
+          users!user_id (
+            id,
+            username,
+            email,
+            profile_picture
+          )
+        `)
+        .single()
+
+      if (insertError) {
+        throw new Error(insertError.message)
+      }
+
+      return { 
+        message: 'Project member added successfully',
+        member: newMember
+      }
+    } catch (error: any) {
+      console.error('Error adding project member:', error)
+      throw error
+    }
+  }
+
+  async removeProjectMember(projectId: string, userId: string) {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Get project info
+      const { data: project } = await supabase
+        .from('projects')
+        .select('created_by')
+        .eq('id', projectId)
+        .single()
+
+      if (!project) {
+        throw new Error('Project not found')
+      }
+
+      // Cannot remove the project creator
+      if (userId === project.created_by) {
+        throw new Error('Cannot remove the project creator')
+      }
+
+      // Check if this would be the last member
+      const { data: members, count } = await supabase
+        .from('project_members')
+        .select('id', { count: 'exact' })
+        .eq('project_id', projectId)
+
+      if (count && count <= 1) {
+        throw new Error('Cannot remove the last member from the project')
+      }
+
+      // Remove the member
+      const { error: deleteError, count: deletedCount } = await supabase
+        .from('project_members')
+        .delete({ count: 'exact' })
+        .eq('project_id', projectId)
+        .eq('user_id', userId)
+
+      if (deleteError) {
+        throw new Error(deleteError.message)
+      }
+
+      if (deletedCount === 0) {
+        throw new Error('User is not a member of this project or access denied')
+      }
+
+      return { message: 'Project member removed successfully' }
+    } catch (error: any) {
+      console.error('Error removing project member:', error)
+      throw error
+    }
+  }
+
+  async getAvailableProjectMembers(projectId: string) {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Get project's group ID
+      const { data: project } = await supabase
+        .from('projects')
+        .select('group_id')
+        .eq('id', projectId)
+        .single()
+
+      if (!project) {
+        throw new Error('Project not found')
+      }
+
+      // Get all group members who are NOT already project members
+      const { data: availableMembers, error } = await supabase
+        .from('group_memberships')
+        .select(`
+          user_id,
+          users (
+            id,
+            username,
+            email,
+            profile_picture
+          )
+        `)
+        .eq('group_id', project.group_id)
+        .not('user_id', 'in', `(
+          SELECT user_id FROM project_members WHERE project_id = '${projectId}'
+        )`)
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return { 
+        availableMembers: availableMembers?.map(m => m.users) || []
+      }
+    } catch (error: any) {
+      console.error('Error fetching available project members:', error)
+      throw error
+    }
+  }
+
+  // ==================== GROUP DEFAULT CHECKLIST METHODS ====================
+
+  async getGroupDefaultChecklistItems(groupId: string) {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Get default checklist items for the group
+      const { data: defaultItems, error } = await supabase
+        .from('group_default_checklist_items')
+        .select('*')
+        .eq('group_id', groupId)
+        .order('display_order', { ascending: true })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return { defaultItems: defaultItems || [] }
+    } catch (error: any) {
+      console.error('Error fetching group default checklist items:', error)
+      throw error
+    }
+  }
+
+  async addGroupDefaultChecklistItem(groupId: string, title: string, description?: string, displayOrder?: number) {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Verify user is admin of the group
+      const { data: membership } = await supabase
+        .from('group_memberships')
+        .select('role')
+        .eq('group_id', groupId)
+        .eq('user_id', user.id)
+        .single()
+
+      if (!membership || membership.role !== 'admin') {
+        throw new Error('Access denied - you must be a group admin')
+      }
+
+      // If no display order provided, get the next order
+      let order = displayOrder
+      if (order === undefined) {
+        const { data: lastItem } = await supabase
+          .from('group_default_checklist_items')
+          .select('display_order')
+          .eq('group_id', groupId)
+          .order('display_order', { ascending: false })
+          .limit(1)
+
+        order = (lastItem?.[0]?.display_order || 0) + 1
+      }
+
+      // Create the default checklist item
+      const { data: newItem, error } = await supabase
+        .from('group_default_checklist_items')
+        .insert({
+          group_id: groupId,
+          title,
+          description,
+          display_order: order,
+          created_by: user.id
+        })
+        .select()
+        .single()
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return {
+        defaultItem: newItem,
+        message: 'Default checklist item added successfully'
+      }
+    } catch (error: any) {
+      console.error('Error adding group default checklist item:', error)
+      throw error
+    }
+  }
+
+  async updateGroupDefaultChecklistItem(itemId: string, data: {
+    title?: string;
+    description?: string;
+    display_order?: number;
+  }) {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Update the item - RLS policies will handle access control
+      const { data: updatedItem, error } = await supabase
+        .from('group_default_checklist_items')
+        .update(data)
+        .eq('id', itemId)
+        .select()
+        .single()
+
+      if (error) {
+        if (error.message.includes('permission') || error.code === '42501') {
+          throw new Error('Access denied - you must be a group admin')
+        }
+        throw new Error(error.message)
+      }
+
+      return updatedItem
+    } catch (error: any) {
+      console.error('Error updating group default checklist item:', error)
+      throw error
+    }
+  }
+
+  async deleteGroupDefaultChecklistItem(itemId: string) {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Delete the item - RLS policies will handle access control
+      const { error: deleteError, count } = await supabase
+        .from('group_default_checklist_items')
+        .delete({ count: 'exact' })
+        .eq('id', itemId)
+
+      if (deleteError) {
+        if (deleteError.message.includes('permission') || deleteError.code === '42501') {
+          throw new Error('Access denied - you must be a group admin')
+        }
+        throw new Error(deleteError.message)
+      }
+
+      if (count === 0) {
+        throw new Error('Default checklist item not found or access denied')
+      }
+
+      return { message: 'Default checklist item deleted successfully' }
+    } catch (error: any) {
+      console.error('Error deleting group default checklist item:', error)
       throw error
     }
   }

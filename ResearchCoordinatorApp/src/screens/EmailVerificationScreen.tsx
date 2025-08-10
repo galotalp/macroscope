@@ -3,7 +3,7 @@ import { View, StyleSheet, KeyboardAvoidingView, Platform, AppState } from 'reac
 import { Card, Title, Button, Text, Snackbar, ActivityIndicator } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
 import { colors, spacing, typography, shadows, borderRadius } from '../theme';
 
@@ -69,7 +69,7 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
 
     setCheckingStatus(true);
     try {
-      const result = await apiService.checkVerificationStatus(email, password);
+      const result = await supabaseService.checkVerificationStatus(email, password);
       
       if (result.isVerified) {
         setSnackbarMessage('Email verified! Please log in with your credentials.');
@@ -102,7 +102,7 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
   const handleResendEmail = async () => {
     setLoading(true);
     try {
-      await apiService.resendVerificationEmail(email);
+      await supabaseService.resendVerificationEmail(email);
       setSnackbarMessage('Verification email sent successfully!');
       setSnackbarColor(colors.success);
       setSnackbarVisible(true);

@@ -24,12 +24,7 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const maxRetries = 2;
 
-  // Debug logging
-  console.log('UserAvatar - profilePictureUrl:', profilePictureUrl);
-  console.log('UserAvatar - username:', username);
-  console.log('UserAvatar - isDefaultProfilePicture:', isDefaultProfilePicture(profilePictureUrl));
-  console.log('UserAvatar - size:', size);
-  console.log('UserAvatar - imageLoadError:', imageLoadError);
+  // Debug logging removed for performance
 
   // Reset error state when profilePictureUrl changes
   useEffect(() => {
@@ -40,10 +35,8 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
   
   // Check if it's a default profile picture
   if (isDefaultProfilePicture(profilePictureUrl)) {
-    console.log('UserAvatar - Using default profile picture');
     const config = getDefaultProfilePictureConfig(profilePictureUrl);
     if (config) {
-      console.log('UserAvatar - Default config found:', config);
       return (
         <Avatar.Image
           size={size}
@@ -56,7 +49,6 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
 
   // If it's a custom profile picture URL and hasn't failed to load
   if (profilePictureUrl && !isDefaultProfilePicture(profilePictureUrl) && !imageLoadError) {
-    console.log('UserAvatar - Using custom profile picture URL:', profilePictureUrl);
     
     // Add cache busting and retry logic for better reliability
     const imageUri = retryCount > 0 
@@ -76,18 +68,13 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
         }}
         onLoad={() => {
           setIsLoading(false);
-          console.log('UserAvatar - Image loaded successfully');
         }}
         onError={(error) => {
           setIsLoading(false);
-          console.log('UserAvatar - Image failed to load:', error);
-          console.log(`UserAvatar - Retry count: ${retryCount}/${maxRetries}`);
           
           if (retryCount < maxRetries) {
-            console.log('UserAvatar - Retrying image load...');
             setRetryCount(prev => prev + 1);
           } else {
-            console.log('UserAvatar - Max retries reached, falling back to initials');
             setImageLoadError(true);
           }
         }}
@@ -96,7 +83,6 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
   }
 
   // Fallback to initials
-  console.log('UserAvatar - Falling back to initials for username:', username);
   return (
     <Avatar.Text
       size={size}

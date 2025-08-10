@@ -15,7 +15,7 @@ import {
   Snackbar,
   ActivityIndicator
 } from 'react-native-paper';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
 
 interface User {
@@ -59,12 +59,12 @@ const CreateProjectScreen: React.FC<CreateProjectScreenProps> = ({
 
   useEffect(() => {
     loadGroupMembers();
-    addDefaultChecklistItems();
+    loadGroupDefaultChecklistItems();
   }, [groupId]);
 
   const loadGroupMembers = async () => {
     try {
-      const response = await apiService.getProjectMembers(groupId);
+      const response = await supabaseService.getProjectMembers(groupId);
       console.log('Group members response:', JSON.stringify(response, null, 2));
       
       // Handle different possible response structures
@@ -89,30 +89,22 @@ const CreateProjectScreen: React.FC<CreateProjectScreenProps> = ({
     }
   };
 
-  const addDefaultChecklistItems = () => {
-    const defaultItems: ChecklistItem[] = [
-      {
-        id: '1',
-        title: 'Manuscript written',
-        description: 'Complete the manuscript draft'
-      },
-      {
-        id: '2',
-        title: 'Ethics submitted',
-        description: 'Submit ethics application'
-      },
-      {
-        id: '3',
-        title: 'Ethics approved',
-        description: 'Receive ethics approval'
-      },
-      {
-        id: '4',
-        title: 'Manuscript submitted',
-        description: 'Submit manuscript to journal'
-      }
-    ];
-    setChecklistItems(defaultItems);
+  const loadGroupDefaultChecklistItems = async () => {
+    try {
+      const response = await supabaseService.getGroupDefaultChecklistItems(groupId);
+      // Convert to the format expected by the Create Project screen
+      const defaultItems = response.defaultItems?.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        description: item.description
+      })) || [];
+      
+      setChecklistItems(defaultItems);
+    } catch (error) {
+      console.error('Error loading group default checklist items:', error);
+      // If we can't load group defaults, start with empty list
+      setChecklistItems([]);
+    }
   };
 
   const showSnackbar = (message: string, color: string = 'green') => {
@@ -173,7 +165,7 @@ const CreateProjectScreen: React.FC<CreateProjectScreenProps> = ({
         memberIds: selectedMembers
       };
 
-      const response = await apiService.createProject(projectData);
+      const response = await supabaseService.createProject(projectData);
       
       if (response.project) {
         // Add custom checklist items
@@ -184,7 +176,7 @@ const CreateProjectScreen: React.FC<CreateProjectScreenProps> = ({
             
             for (const item of checklistItems) {
               console.log('Adding item:', item.title);
-              const itemResponse = await apiService.addChecklistItem(
+              const itemResponse = await supabaseService.addChecklistItem(
                 response.project.id, 
                 item.title, 
                 item.description

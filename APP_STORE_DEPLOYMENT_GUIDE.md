@@ -2,8 +2,17 @@
 
 *Complete step-by-step guide for deploying to Apple App Store and Google Play Store*
 
-**Current Status**: Ready for store submission preparation
+**Current Status**: Marketing website deployed, ready for app screenshots and App Store Connect setup
 **Target Platforms**: iOS (App Store) & Android (Google Play Store)
+
+## 📊 **Progress Summary**
+- **✅ Infrastructure**: 100% Complete (Website, SSL, CDN, Backend)
+- **✅ Marketing Assets**: 100% Complete (Copy, Icon, Website)  
+- **⏳ App Store Assets**: 0% Complete (Screenshots needed)
+- **⏳ Store Setup**: 0% Complete (App Store Connect pending)
+- **Overall Progress**: **60% Complete** 🎯
+
+**🚀 Next Step**: Create app screenshots for iOS submission
 
 ---
 
@@ -11,12 +20,17 @@
 
 ### ✅ **Completed Prerequisites**
 - ✅ Apple Developer Account active
-- ✅ Marketing website live at https://legal.macroscope.info
-- ✅ Privacy Policy published 
-- ✅ Terms of Service published
-- ✅ Production backend deployed and stable
-- ✅ Email verification system working
+- ✅ **Marketing website deployed at https://macroscope.info** (NEW!)
+- ✅ **Professional SSL/HTTPS setup with CloudFront CDN** (NEW!)
+- ✅ Privacy Policy published at https://legal.macroscope.info/privacy.html
+- ✅ Terms of Service published at https://legal.macroscope.info/terms.html
+- ✅ **App icon ready (1024x1024 PNG)** at `ResearchCoordinatorApp/assets/icon.png` (NEW!)
+- ✅ Production backend deployed and stable at https://api.macroscope.info
+- ✅ Email verification system working (AWS SES configured)
 - ✅ Core app functionality complete
+- ✅ **Join request system with database persistence** (NEW!)
+- ✅ **JWT security properly configured** (NEW!)
+- ✅ **Academic-focused marketing copy finalized** (NEW!)
 
 ---
 
@@ -41,9 +55,9 @@
 - [ ] **Age Rating**: Complete questionnaire (likely 4+ or 9+)
 - [ ] **App Description**: Write compelling description (see template below)
 - [ ] **Keywords**: Research, Academic, Collaboration, Projects, University, Students, Papers, Data, Science
-- [ ] **Support URL**: https://legal.macroscope.info/support
-- [ ] **Marketing URL**: https://legal.macroscope.info
-- [ ] **Privacy Policy URL**: https://legal.macroscope.info/privacy
+- [ ] **Support URL**: https://legal.macroscope.info/support.html
+- [ ] **Marketing URL**: https://macroscope.info ✅ **READY**
+- [ ] **Privacy Policy URL**: https://legal.macroscope.info/privacy.html ✅ **READY**
 
 #### **1.3 Pricing and Availability**
 - [ ] Set to **Free**
@@ -68,11 +82,11 @@
 4. File sharing interface
 5. Task management view
 
-#### **2.2 App Icon** 
-- [ ] **1024 x 1024 pixels** (App Store icon)
-- [ ] Must be high-quality, no transparency, no rounded corners
-- [ ] Should match the app's in-app icon design
-- [ ] Test on different backgrounds
+#### **2.2 App Icon** ✅ **COMPLETED**
+- ✅ **1024 x 1024 pixels** (App Store icon) - Located at `ResearchCoordinatorApp/assets/icon.png`
+- ✅ High-quality, no transparency, no rounded corners
+- ✅ Matches the app's in-app icon design
+- ✅ Professional design ready for submission
 
 #### **2.3 App Preview Video** (Optional but Highly Recommended)
 - [ ] **Portrait orientation**: 1080 x 1920 or 1290 x 2796
@@ -322,14 +336,23 @@ Create test accounts for app review teams:
 
 ---
 
-## 📅 **Timeline Estimates**
+## 📅 **Updated Timeline Estimates**
 
-| Phase | Apple App Store | Google Play Store |
-|-------|----------------|-------------------|
-| **Setup & Assets** | 2-3 days | 1-2 days |
-| **Build & Upload** | 1 day | 1 day |
-| **Review Process** | 1-7 days | 1-3 days |
-| **Total Timeline** | **4-11 days** | **3-6 days** |
+### **✅ COMPLETED (August 8, 2025)**
+- ✅ Marketing website deployment with SSL/CDN
+- ✅ App icon preparation  
+- ✅ Marketing copy finalization
+- ✅ Infrastructure setup and testing
+
+### **REMAINING TIMELINE**
+
+| Phase | Apple App Store | Google Play Store | Status |
+|-------|----------------|-------------------|--------|
+| **Screenshots Creation** | 1-2 days | 1 day | ⏳ **NEXT** |
+| **App Store Connect Setup** | 1 day | 1 day | ⏳ Pending |
+| **Build & Upload** | 1 day | 1 day | ⏳ Pending |
+| **Review Process** | 1-7 days | 1-3 days | ⏳ Pending |
+| **Total Remaining** | **4-11 days** | **3-6 days** | **Est. by Aug 19** |
 
 ---
 

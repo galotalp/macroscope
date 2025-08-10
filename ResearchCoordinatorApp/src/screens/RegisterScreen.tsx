@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { TextInput, Button, Card, Title, Snackbar, ActivityIndicator, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
 import { colors, spacing, typography, shadows, borderRadius } from '../theme';
 import { User } from '../types';
@@ -17,6 +17,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -43,7 +45,7 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
     console.log('Attempting registration for:', email, username);
     setLoading(true);
     try {
-      const response = await apiService.register(email, password, username);
+      const response = await supabaseService.register(email, password, username);
       console.log('Registration successful:', response);
       // Navigate to email verification screen
       onRegisterSuccess(email, password);
@@ -81,7 +83,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
                 mode="outlined"
                 disabled={loading}
                 autoCapitalize="none"
-                autoComplete="off"
+                autoComplete="username"
+                textContentType="username"
                 autoCorrect={false}
                 outlineColor={colors.borderLight}
                 activeOutlineColor={colors.primary}
@@ -95,8 +98,9 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
                 mode="outlined"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoComplete="email"
+                textContentType="emailAddress"
                 disabled={loading}
-                autoComplete="off"
                 autoCorrect={false}
                 outlineColor={colors.borderLight}
                 activeOutlineColor={colors.primary}
@@ -108,12 +112,18 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
                 onChangeText={setPassword}
                 style={styles.input}
                 mode="outlined"
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 disabled={loading}
-                autoComplete="off"
+                autoComplete="new-password"
                 autoCorrect={false}
+                passwordRules="minlength: 6;"
+                textContentType="newPassword"
                 outlineColor={colors.borderLight}
                 activeOutlineColor={colors.primary}
+                right={<TextInput.Icon 
+                  icon={showPassword ? "eye-off" : "eye"} 
+                  onPress={() => setShowPassword(!showPassword)}
+                />}
               />
 
               <TextInput
@@ -122,12 +132,18 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
                 onChangeText={setConfirmPassword}
                 style={styles.input}
                 mode="outlined"
-                secureTextEntry
+                secureTextEntry={!showConfirmPassword}
                 disabled={loading}
-                autoComplete="off"
+                autoComplete="new-password"
                 autoCorrect={false}
+                passwordRules="minlength: 6;"
+                textContentType="newPassword"
                 outlineColor={colors.borderLight}
                 activeOutlineColor={colors.primary}
+                right={<TextInput.Icon 
+                  icon={showConfirmPassword ? "eye-off" : "eye"} 
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                />}
               />
 
               <Button

@@ -4,7 +4,7 @@ import { Appbar, Card, Title, Button, Text, FAB, Snackbar, ActivityIndicator, Li
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import UserAvatar from '../components/UserAvatar';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
 import { colors, spacing, typography, shadows, borderRadius, componentStyles } from '../theme';
 
@@ -46,6 +46,7 @@ interface Project {
 interface ProjectFile {
   id: string;
   filename: string;
+  original_name: string;
   file_size: number;
   mime_type: string;
   uploaded_at?: string;
@@ -87,7 +88,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
 
   const loadProjectDetails = async () => {
     try {
-      const response = await apiService.getProjectDetails(projectId);
+      const response = await supabaseService.getProjectDetails(projectId);
       console.log('Project details response:', JSON.stringify(response, null, 2));
       
       if (!response || !response.project) {
@@ -119,7 +120,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
 
   const loadProjectFiles = async () => {
     try {
-      const response = await apiService.getProjectFiles(projectId, sortBy, sortOrder);
+      const response = await supabaseService.getProjectFiles(projectId, sortBy, sortOrder);
       setFiles(response.files || []);
     } catch (error) {
       console.error('Error loading project files:', error);
@@ -134,7 +135,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
 
   const handleSaveProject = async () => {
     try {
-      await apiService.updateProject(projectId, {
+      await supabaseService.updateProject(projectId, {
         name: editedProject.name,
         description: editedProject.description,
         priority: editedProject.priority,
@@ -151,7 +152,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
 
   const handleToggleChecklistItem = async (itemId: string, currentCompleted: boolean) => {
     try {
-      await apiService.updateChecklistItem(projectId, itemId, {
+      await supabaseService.updateChecklistItem(projectId, itemId, {
         completed: !currentCompleted,
       });
       setChecklist(prev =>
@@ -169,7 +170,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
     if (!newChecklistTitle.trim()) return;
 
     try {
-      await apiService.addChecklistItem(projectId, newChecklistTitle, newChecklistDescription);
+      await supabaseService.addChecklistItem(projectId, newChecklistTitle, newChecklistDescription);
       setNewChecklistTitle('');
       setNewChecklistDescription('');
       setShowAddChecklistDialog(false);
@@ -183,7 +184,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
 
   const handleDeleteChecklistItem = async (itemId: string) => {
     try {
-      await apiService.deleteChecklistItem(projectId, itemId);
+      await supabaseService.deleteChecklistItem(projectId, itemId);
       setChecklist(prev => prev.filter(item => item.id !== itemId));
       showSnackbar('Checklist item deleted successfully');
     } catch (error) {
@@ -195,7 +196,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
   const handleDeleteProject = async () => {
     setDeleting(true);
     try {
-      await apiService.deleteProject(projectId);
+      await supabaseService.deleteProject(projectId);
       showSnackbar('Project deleted successfully');
       setShowDeleteDialog(false);
       
@@ -241,7 +242,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
 
         console.log('File to upload:', fileToUpload);
 
-        await apiService.uploadProjectFile(projectId, fileToUpload);
+        await supabaseService.uploadProjectFile(projectId, fileToUpload);
         showSnackbar('File uploaded successfully');
         loadProjectFiles(); // Refresh the file list
       }
@@ -255,7 +256,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
 
   const handleFileDownload = async (fileId: string, filename: string) => {
     try {
-      const result = await apiService.downloadProjectFile(projectId, fileId);
+      const result = await supabaseService.downloadProjectFile(projectId, fileId);
       const downloadUrl = result.downloadUrl;
       
       if (downloadUrl) {
@@ -288,7 +289,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
           style: 'destructive',
           onPress: async () => {
             try {
-              await apiService.deleteProjectFile(projectId, fileId);
+              await supabaseService.deleteProjectFile(projectId, fileId);
               showSnackbar('File deleted successfully');
               loadProjectFiles(); // Refresh the file list
             } catch (error) {
@@ -305,7 +306,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
     if (!project) return;
     
     try {
-      const response = await apiService.getProjectMembers(project.group_id);
+      const response = await supabaseService.getProjectMembers(project.group_id);
       const currentMemberIds = members.map(m => m.users?.id || m.id);
       const available = response.members.filter((member: any) => 
         !currentMemberIds.includes(member.id)
@@ -321,7 +322,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
     if (!selectedMemberId) return;
 
     try {
-      await apiService.assignUserToProject(projectId, selectedMemberId);
+      await supabaseService.assignUserToProject(projectId, selectedMemberId);
       setShowAddMemberDialog(false);
       setSelectedMemberId('');
       showSnackbar('Member added successfully');
@@ -343,7 +344,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
           style: 'destructive',
           onPress: async () => {
             try {
-              await apiService.removeUserFromProject(projectId, userId);
+              await supabaseService.removeUserFromProject(projectId, userId);
               showSnackbar('Member removed successfully');
               loadProjectDetails(); // Refresh to get updated member list
             } catch (error) {
@@ -708,7 +709,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
                 <View key={file.id} style={styles.fileItem}>
                   <List.Icon icon={getFileIcon(file.mime_type)} size={32} />
                   <View style={styles.fileInfo}>
-                    <Text style={styles.fileName}>{file.filename}</Text>
+                    <Text style={styles.fileName}>{file.original_name}</Text>
                     <Text style={styles.fileDetails}>
                       {formatFileSize(file.file_size)} • Uploaded: {file.uploaded_at ? new Date(file.uploaded_at).toLocaleDateString() : 'Unknown date'}
                     </Text>
@@ -720,12 +721,12 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
                     <IconButton
                       icon="download"
                       size={20}
-                      onPress={() => handleFileDownload(file.id, file.filename)}
+                      onPress={() => handleFileDownload(file.id, file.original_name)}
                     />
                     <IconButton
                       icon="delete"
                       size={20}
-                      onPress={() => handleFileDelete(file.id, file.filename)}
+                      onPress={() => handleFileDelete(file.id, file.original_name)}
                     />
                   </View>
                 </View>

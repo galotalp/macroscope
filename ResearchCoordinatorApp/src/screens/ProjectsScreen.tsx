@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity } from 'react-native';
 import { Appbar, Card, Button, Text, FAB, Snackbar, ActivityIndicator, Chip, DataTable } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
 import { colors, spacing, typography, shadows, borderRadius, componentStyles, textStyles } from '../theme';
 import CreateProjectScreen from './CreateProjectScreen';
@@ -49,7 +49,7 @@ const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack
 
   const loadGroupName = async () => {
     try {
-      const response = await apiService.getResearchGroups();
+      const response = await supabaseService.getResearchGroups();
       console.log('Research groups response:', response);
       const group = response.groups?.find((g: any) => g.id === groupId);
       console.log('Found group for ID', groupId, ':', group);
@@ -64,14 +64,14 @@ const ProjectsScreen: React.FC<ProjectsScreenProps> = ({ groupId, onNavigateBack
 
   const loadProjects = async () => {
     try {
-      const response = await apiService.getProjects(groupId);
+      const response = await supabaseService.getProjects(groupId);
       const projectsData = response.projects || [];
       
       // Load details for each project to get task counts and assigned members
       const projectsWithDetails = await Promise.all(
         projectsData.map(async (project: Project) => {
           try {
-            const details = await apiService.getProjectDetails(project.id);
+            const details = await supabaseService.getProjectDetails(project.id);
             console.log('Project details for', project.name, ':', JSON.stringify(details.members, null, 2));
             const completedTasks = details.checklist?.filter((item: any) => item.completed).length || 0;
             const totalTasks = details.checklist?.length || 0;

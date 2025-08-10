@@ -19,7 +19,7 @@ import {
   TextInput
 } from 'react-native-paper';
 import UserAvatar from '../components/UserAvatar';
-import apiService from '../services/api';
+import supabaseService from '../services/supabaseService';
 
 interface ResearchGroupSettingsScreenProps {
   groupId: string;
@@ -60,6 +60,14 @@ interface GroupDetails {
   created_by: string;
 }
 
+interface DefaultChecklistItem {
+  id: string;
+  title: string;
+  description?: string;
+  display_order: number;
+  created_at: string;
+}
+
 const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = ({ 
   groupId, 
   onNavigateBack, 
@@ -80,6 +88,14 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarColor, setSnackbarColor] = useState('green');
 
+  // Default checklist items state
+  const [defaultChecklistItems, setDefaultChecklistItems] = useState<DefaultChecklistItem[]>([]);
+  const [checklistDialogVisible, setChecklistDialogVisible] = useState(false);
+  const [editingChecklistItem, setEditingChecklistItem] = useState<DefaultChecklistItem | null>(null);
+  const [checklistItemTitle, setChecklistItemTitle] = useState('');
+  const [checklistItemDescription, setChecklistItemDescription] = useState('');
+  const [checklistItemLoading, setChecklistItemLoading] = useState(false);
+
   useEffect(() => {
     loadGroupDetails();
   }, [groupId]);
@@ -87,16 +103,29 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
   const loadGroupDetails = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getGroupDetails(groupId);
+      const response = await supabaseService.getGroupDetails(groupId);
       setGroupDetails(response.group);
       setMembers(response.members || []);
       setJoinRequests(response.joinRequests || []);
       setIsAdmin(response.isAdmin || false);
+
+      // Load default checklist items
+      await loadDefaultChecklistItems();
     } catch (error) {
       console.error('Error loading group details:', error);
       showSnackbar('Failed to load group details', 'red');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDefaultChecklistItems = async () => {
+    try {
+      const response = await supabaseService.getGroupDefaultChecklistItems(groupId);
+      setDefaultChecklistItems(response.defaultItems || []);
+    } catch (error) {
+      console.error('Error loading default checklist items:', error);
+      // Don't show error for this - it's not critical
     }
   };
 
@@ -109,7 +138,7 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
   const handleJoinRequestAction = async (requestId: string, action: 'approve' | 'reject') => {
     setActionLoading(requestId);
     try {
-      await apiService.respondToJoinRequest(groupId, requestId, action);
+      await supabaseService.respondToJoinRequest(groupId, requestId, action);
       showSnackbar(`Join request ${action === 'approve' ? 'approved' : 'rejected'} successfully`);
       loadGroupDetails(); // Refresh the data
     } catch (error) {
@@ -138,7 +167,7 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
   const removeMember = async (userId: string) => {
     setActionLoading(userId);
     try {
-      await apiService.removeMemberFromGroup(groupId, userId);
+      await supabaseService.removeMemberFromGroup(groupId, userId);
       showSnackbar('Member removed successfully');
       loadGroupDetails(); // Refresh the data
     } catch (error) {
@@ -165,7 +194,7 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
 
     setEditLoading(true);
     try {
-      await apiService.updateResearchGroup(groupId, {
+      await supabaseService.updateResearchGroup(groupId, {
         name: editGroupName.trim(),
         description: editGroupDescription.trim()
       });
@@ -187,7 +216,7 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
 
   const confirmDeleteGroup = async () => {
     try {
-      await apiService.deleteResearchGroup(groupId);
+      await supabaseService.deleteResearchGroup(groupId);
       showSnackbar('Group deleted successfully');
       setDeleteDialogVisible(false);
       setTimeout(() => {
@@ -201,6 +230,80 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
+  };
+
+  // Default checklist item handlers
+  const handleAddChecklistItem = () => {
+    setEditingChecklistItem(null);
+    setChecklistItemTitle('');
+    setChecklistItemDescription('');
+    setChecklistDialogVisible(true);
+  };
+
+  const handleEditChecklistItem = (item: DefaultChecklistItem) => {
+    setEditingChecklistItem(item);
+    setChecklistItemTitle(item.title);
+    setChecklistItemDescription(item.description || '');
+    setChecklistDialogVisible(true);
+  };
+
+  const handleSaveChecklistItem = async () => {
+    if (!checklistItemTitle.trim()) {
+      showSnackbar('Please enter a title', 'red');
+      return;
+    }
+
+    try {
+      setChecklistItemLoading(true);
+      if (editingChecklistItem) {
+        // Update existing item
+        await supabaseService.updateGroupDefaultChecklistItem(editingChecklistItem.id, {
+          title: checklistItemTitle.trim(),
+          description: checklistItemDescription.trim() || undefined
+        });
+        showSnackbar('Checklist item updated successfully');
+      } else {
+        // Create new item
+        await supabaseService.addGroupDefaultChecklistItem(
+          groupId,
+          checklistItemTitle.trim(),
+          checklistItemDescription.trim() || undefined
+        );
+        showSnackbar('Checklist item added successfully');
+      }
+      
+      setChecklistDialogVisible(false);
+      await loadDefaultChecklistItems();
+    } catch (error) {
+      console.error('Error saving checklist item:', error);
+      showSnackbar(error instanceof Error ? error.message : 'Failed to save checklist item', 'red');
+    } finally {
+      setChecklistItemLoading(false);
+    }
+  };
+
+  const handleDeleteChecklistItem = (item: DefaultChecklistItem) => {
+    Alert.alert(
+      'Delete Checklist Item',
+      `Are you sure you want to delete "${item.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await supabaseService.deleteGroupDefaultChecklistItem(item.id);
+              showSnackbar('Checklist item deleted successfully');
+              await loadDefaultChecklistItems();
+            } catch (error) {
+              console.error('Error deleting checklist item:', error);
+              showSnackbar(error instanceof Error ? error.message : 'Failed to delete checklist item', 'red');
+            }
+          }
+        }
+      ]
+    );
   };
 
   if (loading) {
@@ -272,14 +375,14 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
                   <View key={request.id} style={styles.requestItem}>
                     <View style={styles.memberAvatar}>
                       <UserAvatar
-                        profilePictureUrl={request.users.profile_picture}
-                        username={request.users.username}
+                        profilePictureUrl={request.users?.profile_picture}
+                        username={request.users?.username || 'Unknown'}
                         size={40}
                       />
                     </View>
                     <View style={styles.requestInfo}>
-                      <Text style={styles.requestName}>{request.users.username}</Text>
-                      <Text style={styles.requestEmail}>{request.users.email}</Text>
+                      <Text style={styles.requestName}>{request.users?.username || 'Unknown User'}</Text>
+                      <Text style={styles.requestEmail}>{request.users?.email || 'No email'}</Text>
                       <Text style={styles.requestDate}>
                         Requested: {formatDate(request.requested_at)}
                       </Text>
@@ -333,14 +436,14 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
                 <View key={member.id} style={styles.memberItem}>
                   <View style={styles.memberAvatar}>
                     <UserAvatar
-                      profilePictureUrl={member.users.profile_picture}
-                      username={member.users.username}
+                      profilePictureUrl={member.users?.profile_picture}
+                      username={member.users?.username || 'Unknown'}
                       size={40}
                     />
                   </View>
                   <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>{member.users.username}</Text>
-                    <Text style={styles.memberEmail}>{member.users.email}</Text>
+                    <Text style={styles.memberName}>{member.users?.username || 'Unknown User'}</Text>
+                    <Text style={styles.memberEmail}>{member.users?.email || 'No email'}</Text>
                     <View style={styles.memberDetails}>
                     <Chip 
                       style={member.role === 'admin' ? styles.adminChip : styles.memberChip}
@@ -365,6 +468,60 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
             })}
           </Card.Content>
         </Card>
+
+        {/* Default Checklist Items - Admin Only */}
+        {isAdmin && (
+          <Card style={styles.card}>
+            <Card.Content>
+              <View style={styles.sectionHeader}>
+                <Title style={styles.sectionTitle}>Default Checklist Items</Title>
+                {isAdmin && (
+                  <IconButton
+                    icon="plus"
+                    onPress={handleAddChecklistItem}
+                    style={styles.addButton}
+                  />
+                )}
+              </View>
+              <Text style={styles.sectionDescription}>
+                These checklist items will be automatically added to all new projects in this group.
+              </Text>
+              
+              {defaultChecklistItems.length === 0 ? (
+                <Text style={styles.emptyText}>No default checklist items yet. Add one to get started!</Text>
+              ) : (
+                defaultChecklistItems.map((item) => (
+                  <View key={item.id} style={styles.checklistItem}>
+                    <View style={styles.checklistItemContent}>
+                      <Text style={styles.checklistItemTitle}>{item.title}</Text>
+                      {item.description && (
+                        <Text style={styles.checklistItemDescription}>{item.description}</Text>
+                      )}
+                    </View>
+                    <View style={styles.checklistItemActions}>
+                      {isAdmin && (
+                        <>
+                          <IconButton
+                            icon="pencil"
+                            size={20}
+                            onPress={() => handleEditChecklistItem(item)}
+                            style={styles.editChecklistButton}
+                          />
+                          <IconButton
+                            icon="delete"
+                            size={20}
+                            onPress={() => handleDeleteChecklistItem(item)}
+                            style={styles.deleteChecklistButton}
+                          />
+                        </>
+                      )}
+                    </View>
+                  </View>
+                ))
+              )}
+            </Card.Content>
+          </Card>
+        )}
 
         {/* Delete Group - Admin Only */}
         {isAdmin && (
@@ -415,6 +572,37 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
             </Button>
             <Button onPress={handleSaveGroupChanges} mode="contained" disabled={editLoading}>
               {editLoading ? <ActivityIndicator size="small" color="white" /> : 'Save'}
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      {/* Checklist Item Dialog */}
+      <Portal>
+        <Dialog visible={checklistDialogVisible} onDismiss={() => setChecklistDialogVisible(false)}>
+          <Dialog.Title>{editingChecklistItem ? 'Edit Checklist Item' : 'Add Checklist Item'}</Dialog.Title>
+          <Dialog.Content>
+            <TextInput
+              label="Title"
+              value={checklistItemTitle}
+              onChangeText={setChecklistItemTitle}
+              mode="outlined"
+              style={styles.dialogInput}
+            />
+            <TextInput
+              label="Description (optional)"
+              value={checklistItemDescription}
+              onChangeText={setChecklistItemDescription}
+              mode="outlined"
+              multiline
+              numberOfLines={3}
+              style={styles.dialogInput}
+            />
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setChecklistDialogVisible(false)}>Cancel</Button>
+            <Button onPress={handleSaveChecklistItem} mode="contained" disabled={checklistItemLoading}>
+              {checklistItemLoading ? <ActivityIndicator size="small" color="white" /> : 'Save'}
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -589,6 +777,63 @@ const styles = StyleSheet.create({
     marginRight: 12,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+  },
+  sectionDescription: {
+    color: '#666',
+    marginBottom: 16,
+    fontSize: 14,
+  },
+  addButton: {
+    backgroundColor: '#e3f2fd',
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#999',
+    fontStyle: 'italic',
+    marginVertical: 20,
+  },
+  checklistItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  checklistItemContent: {
+    flex: 1,
+  },
+  checklistItemTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  checklistItemDescription: {
+    fontSize: 14,
+    color: '#666',
+  },
+  checklistItemActions: {
+    flexDirection: 'row',
+  },
+  editChecklistButton: {
+    backgroundColor: '#e8f5e8',
+    marginRight: 4,
+  },
+  deleteChecklistButton: {
+    backgroundColor: '#ffebee',
+  },
+  dialogInput: {
+    marginBottom: 12,
   },
 });
 
