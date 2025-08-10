@@ -194,7 +194,7 @@ router.post('/login', async (req, res) => {
                 email: user.email
             });
         }
-        const token = jsonwebtoken_1.default.sign({ id: user.id, username: user.username, email: user.email }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '24h' });
+        const token = jsonwebtoken_1.default.sign({ id: user.id, username: user.username, email: user.email }, process.env.JWT_SECRET, { expiresIn: '24h' });
         res.json({
             message: 'Login successful',
             token,

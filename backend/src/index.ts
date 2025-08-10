@@ -35,10 +35,10 @@ import projectRoutes from './routes/projects';
 console.log('Routes imported successfully');
 
 // Demo routes (fallback)
-import authDemoRoutes from './routes/auth-demo';
-import userDemoRoutes from './routes/users-demo';
-import groupDemoRoutes from './routes/groups-demo';
-import projectDemoRoutes from './routes/projects-demo';
+import authDemoRoutes from './routes/demo/auth-demo';
+import userDemoRoutes from './routes/demo/users-demo';
+import groupDemoRoutes from './routes/demo/groups-demo';
+import projectDemoRoutes from './routes/demo/projects-demo';
 
 // Routes - use real Supabase routes if available, otherwise demo routes
 if (isDemoMode) {

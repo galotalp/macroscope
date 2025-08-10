@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken } from '../../middleware/auth';
 
 const router = express.Router();
 

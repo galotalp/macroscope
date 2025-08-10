@@ -11,7 +11,10 @@ const authenticateToken = (req, res, next) => {
     if (!token) {
         return res.status(401).json({ error: 'Access token required', requiresReauth: true });
     }
-    const secret = process.env.JWT_SECRET || 'your-secret-key';
+    if (!process.env.JWT_SECRET) {
+        return res.status(500).json({ error: 'Server configuration error: JWT secret not set' });
+    }
+    const secret = process.env.JWT_SECRET;
     jsonwebtoken_1.default.verify(token, secret, (err, user) => {
         if (err) {
             return res.status(403).json({ error: 'Invalid or expired token', requiresReauth: true });
