@@ -8,7 +8,7 @@ class SupabaseService {
     try {
       // Registration started
       
-      // Sign up user with Supabase Auth (skip email confirmation temporarily)
+      // Sign up user with Supabase Auth (with email confirmation enabled)
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
@@ -16,7 +16,7 @@ class SupabaseService {
           data: {
             username: username
           },
-          emailRedirectTo: undefined // Disable email confirmation temporarily
+          emailRedirectTo: 'https://macroscope.info/verify-email' // Enable email confirmation
         }
       })
 

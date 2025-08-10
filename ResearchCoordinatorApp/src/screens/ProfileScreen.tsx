@@ -25,7 +25,6 @@ import ProfilePictureSelector from '../components/ProfilePictureSelector';
 import UserAvatar from '../components/UserAvatar';
 import { transformErrorMessage } from '../utils/errorMessages';
 import { User } from '../types';
-import { API_URL } from '../config';
 
 interface ProfileScreenProps {
   user: User | null;
