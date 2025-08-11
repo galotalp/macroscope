@@ -1,5 +1,10 @@
 import { supabase } from '../config/supabase'
 import { User } from '../types'
+import { 
+  validateFile, 
+  sanitizeFilename, 
+  FILE_SECURITY_ERRORS 
+} from '../constants/fileUploadSecurity'
 
 class SupabaseService {
   // Auth cache to reduce redundant getUser() calls
@@ -272,19 +277,32 @@ class SupabaseService {
         throw new Error('Not authenticated')
       }
 
-      // Create file path
-      const fileExt = fileName.split('.').pop() || 'jpg'
+      // SECURITY: Sanitize filename first
+      const sanitizedFileName = sanitizeFilename(fileName)
+      const fileExt = sanitizedFileName.split('.').pop() || 'jpg'
+      
+      // SECURITY: Validate file type for profile pictures
+      const mimeType = `image/${fileExt}`
+      const validation = validateFile(
+        { name: sanitizedFileName, type: mimeType },
+        'PROFILE_PICTURE'
+      )
+      
+      if (!validation.valid) {
+        throw new Error(validation.error || 'Invalid profile picture file')
+      }
+
+      // Create secure file path
       const filePath = `${user.id}/profile-${Date.now()}.${fileExt}`
       
-      console.log('Uploading image from:', imageUri)
-      console.log('To path:', filePath)
+      console.log('Uploading profile picture...')
 
       // Use Supabase's built-in React Native support with FormData
       const formData = new FormData()
       formData.append('file', {
         uri: imageUri,
-        name: fileName,
-        type: `image/${fileExt}`,
+        name: sanitizedFileName,
+        type: mimeType,
       } as any)
 
       // Upload using Supabase storage
@@ -295,8 +313,6 @@ class SupabaseService {
           upsert: true,
         })
 
-      console.log('Upload response:', { data, error })
-
       if (error) {
         throw new Error(error.message)
       }
@@ -306,8 +322,6 @@ class SupabaseService {
         .from('profile-pictures')
         .getPublicUrl(filePath)
 
-      console.log('Public URL:', publicUrl)
-
       // Update user profile in database
       const { data: updatedUser, error: updateError } = await supabase
         .from('users')
@@ -315,8 +329,6 @@ class SupabaseService {
         .eq('id', user.id)
         .select()
         .single()
-
-      console.log('Database update completed')
 
       if (updateError) {
         throw new Error(updateError.message)
@@ -1445,7 +1457,8 @@ class SupabaseService {
 
   async uploadProjectFile(projectId: string, file: any) {
     try {
-      console.log('File object received:', file)
+      // Remove sensitive logging
+      console.log('Processing file upload...')
 
       const { data: { user }, error: authError } = await this.getCachedUser()
       
@@ -1453,12 +1466,11 @@ class SupabaseService {
         throw new Error('Not authenticated')
       }
 
-      // No explicit access check needed - RLS policies will handle it
-
       // Prepare file for upload
       let fileData: Blob
       let fileName: string
       let mimeType: string
+      let fileSize: number
 
       if (file.uri) {
         // React Native file
@@ -1466,19 +1478,34 @@ class SupabaseService {
         fileData = await response.blob()
         fileName = file.name || `upload-${Date.now()}.bin`
         mimeType = file.mimeType || file.type || 'application/octet-stream'
+        fileSize = file.size || fileData.size
       } else {
         // Web File object
         fileData = file
         fileName = file.name
         mimeType = file.type
+        fileSize = file.size
       }
 
-      // Create unique file path: projectId/timestamp-filename
-      const timestamp = Date.now()
-      const fileExt = fileName.split('.').pop()
-      const uniqueFileName = `${projectId}/${timestamp}-${fileName}`
+      // SECURITY: Validate file before upload
+      const validation = validateFile(
+        { name: fileName, size: fileSize, type: mimeType },
+        'PROJECT_FILE'
+      )
+      
+      if (!validation.valid) {
+        throw new Error(validation.error || FILE_SECURITY_ERRORS.UPLOAD_FAILED)
+      }
 
-      console.log('Uploading file:', { fileName, mimeType, size: fileData.size })
+      // SECURITY: Sanitize filename to prevent injection attacks
+      const sanitizedFileName = sanitizeFilename(fileName)
+      
+      // Create unique file path with sanitized name
+      const timestamp = Date.now()
+      const fileExt = sanitizedFileName.split('.').pop()
+      const uniqueFileName = `${projectId}/${timestamp}-${sanitizedFileName}`
+
+      console.log('Uploading file (sanitized)...')
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
@@ -1502,10 +1529,10 @@ class SupabaseService {
         .from('project_files')
         .insert([{
           project_id: projectId,
-          filename: uniqueFileName, // Processed filename with path
-          original_name: fileName,  // Original filename from user
+          filename: uniqueFileName, // Sanitized filename with path
+          original_name: sanitizedFileName,  // Sanitized original filename
           file_path: uniqueFileName,
-          file_size: fileData.size,
+          file_size: fileSize,
           mime_type: mimeType,
           uploaded_by: user.id
         }])
@@ -1518,7 +1545,7 @@ class SupabaseService {
         throw new Error(dbError.message)
       }
 
-      console.log('Upload successful:', fileRecord)
+      console.log('Upload successful')
       return fileRecord
     } catch (error: any) {
       console.error('File upload failed:', error)
