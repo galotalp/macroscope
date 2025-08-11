@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, TextInput, Alert, Linking } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, TextInput, Alert, Platform, KeyboardAvoidingView } from 'react-native';
 import { Appbar, Card, Title, Button, Text, FAB, Snackbar, ActivityIndicator, List, Checkbox, IconButton, Chip, Dialog, Portal, Menu, Divider, SegmentedButtons, Avatar } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import UserAvatar from '../components/UserAvatar';
 import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
@@ -256,25 +258,63 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
 
   const handleFileDownload = async (fileId: string, filename: string) => {
     try {
+      setLoading(true);
+      showSnackbar('Downloading file...', 'orange');
+      
       const result = await supabaseService.downloadProjectFile(projectId, fileId);
       const downloadUrl = result.downloadUrl;
       
-      if (downloadUrl) {
-        // Try to open the URL
-        if (Linking.canOpenURL(downloadUrl)) {
-          await Linking.openURL(downloadUrl);
-          showSnackbar('File download started');
-        } else {
-          // Fallback - copy URL to clipboard or show it
-          showSnackbar('Download URL ready', 'orange');
-          console.log('Download URL:', downloadUrl);
-        }
-      } else {
+      if (!downloadUrl) {
         throw new Error('No download URL received');
       }
+
+      // Download to local storage first
+      const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const fileUri = FileSystem.documentDirectory + sanitizedFilename;
+      
+      const downloadResult = await FileSystem.downloadAsync(downloadUrl, fileUri);
+      
+      if (downloadResult.status !== 200) {
+        throw new Error(`Download failed with status: ${downloadResult.status}`);
+      }
+      
+      // Check file exists
+      const fileInfo = await FileSystem.getInfoAsync(downloadResult.uri);
+      
+      if (!fileInfo.exists) {
+        throw new Error('Downloaded file not found');
+      }
+      
+      if (fileInfo.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+      
+      showSnackbar('File ready! Choose where to save...', 'green');
+      
+      // Use Expo Sharing to present native iOS share sheet
+      if (await Sharing.isAvailableAsync()) {
+        try {
+          await Sharing.shareAsync(downloadResult.uri, {
+            mimeType: result.mimeType,
+            dialogTitle: `Save ${filename}`,
+            UTI: result.mimeType
+          });
+          showSnackbar('File shared successfully!', 'green');
+        } catch (shareError) {
+          console.error('Share error:', shareError);
+          showSnackbar('File saved to app storage', 'orange');
+          console.log('File saved at:', downloadResult.uri);
+        }
+      } else {
+        showSnackbar('File downloaded successfully!', 'green');
+        console.log('File saved at:', downloadResult.uri);
+      }
+      
     } catch (error) {
       console.error('Error downloading file:', error);
       showSnackbar(transformErrorMessage(error), 'red');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -653,7 +693,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
             ) : (
               files.map((file) => (
                 <View key={file.id} style={styles.fileItem}>
-                  <List.Icon icon={getFileIcon(file.mime_type)} size={32} />
+                  <List.Icon icon={getFileIcon(file.mime_type)} />
                   <View style={styles.fileInfo}>
                     <Text style={styles.fileName}>{file.original_name}</Text>
                     <Text style={styles.fileDetails}>
@@ -738,7 +778,11 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
       </ScrollView>
 
       <Portal>
-        <Dialog visible={showAddChecklistDialog} onDismiss={() => setShowAddChecklistDialog(false)}>
+        <Dialog 
+          visible={showAddChecklistDialog} 
+          onDismiss={() => setShowAddChecklistDialog(false)}
+          style={{ marginTop: -150 }}
+        >
           <Dialog.Title>Add Checklist Item</Dialog.Title>
           <Dialog.Content>
             <TextInput
@@ -747,6 +791,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
               onChangeText={setNewChecklistTitle}
               placeholder="Title"
               autoFocus
+              mode="outlined"
             />
             <TextInput
               style={[styles.dialogInput, styles.textArea]}
@@ -755,6 +800,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
               placeholder="Description (optional)"
               multiline
               numberOfLines={3}
+              mode="outlined"
             />
           </Dialog.Content>
           <Dialog.Actions>

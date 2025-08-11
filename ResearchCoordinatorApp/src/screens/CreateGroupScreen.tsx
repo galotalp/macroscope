@@ -206,7 +206,11 @@ const CreateGroupScreen: React.FC<CreateGroupScreenProps> = ({ onNavigateBack, o
       </Snackbar>
 
       <Portal>
-        <Dialog visible={showAddChecklistDialog} onDismiss={() => setShowAddChecklistDialog(false)}>
+        <Dialog 
+          visible={showAddChecklistDialog} 
+          onDismiss={() => setShowAddChecklistDialog(false)}
+          style={{ marginTop: -150 }}
+        >
           <Dialog.Title>Add Default Checklist Item</Dialog.Title>
           <Dialog.Content>
             <TextInput

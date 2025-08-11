@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { 
   Appbar, 
   Card, 
@@ -220,7 +220,12 @@ const CreateProjectScreen: React.FC<CreateProjectScreenProps> = ({
         <Appbar.Content title="Create Project" />
       </Appbar.Header>
 
-      <ScrollView style={styles.content}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView style={styles.content}>
         {/* Project Basic Info */}
         <Card style={styles.card}>
           <Card.Content>
@@ -411,7 +416,8 @@ const CreateProjectScreen: React.FC<CreateProjectScreenProps> = ({
 
         {/* Bottom spacing for FAB */}
         <View style={styles.bottomSpace} />
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       <FAB
         icon="check"

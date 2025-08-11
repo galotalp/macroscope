@@ -7,6 +7,8 @@ import {
   Alert,
   SafeAreaView,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import {
   Card,
@@ -196,17 +198,22 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView 
-        style={styles.container}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => refreshProfileData(true)}
-            colors={[theme.colors.primary]}
-            tintColor={theme.colors.primary}
-          />
-        }
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
+        <ScrollView 
+          style={styles.container}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => refreshProfileData(true)}
+              colors={[theme.colors.primary]}
+              tintColor={theme.colors.primary}
+            />
+          }
+        >
       <Card style={styles.card}>
         <Card.Content>
           <Title style={styles.title}>My Profile</Title>
@@ -299,7 +306,8 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
       >
         {snackbarMessage}
       </Snackbar>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

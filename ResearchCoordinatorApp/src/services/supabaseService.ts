@@ -1457,8 +1457,6 @@ class SupabaseService {
 
   async uploadProjectFile(projectId: string, file: any) {
     try {
-      // Remove sensitive logging
-      console.log('Processing file upload...')
 
       const { data: { user }, error: authError } = await this.getCachedUser()
       
@@ -1473,12 +1471,16 @@ class SupabaseService {
       let fileSize: number
 
       if (file.uri) {
-        // React Native file
-        const response = await fetch(file.uri)
-        fileData = await response.blob()
+        // React Native file - use direct URI approach
+        fileData = {
+          uri: file.uri,
+          type: file.mimeType || file.type || 'application/octet-stream',
+          name: file.name || `upload-${Date.now()}.bin`
+        } as any
+        
         fileName = file.name || `upload-${Date.now()}.bin`
         mimeType = file.mimeType || file.type || 'application/octet-stream'
-        fileSize = file.size || fileData.size
+        fileSize = file.size
       } else {
         // Web File object
         fileData = file
@@ -1504,8 +1506,6 @@ class SupabaseService {
       const timestamp = Date.now()
       const fileExt = sanitizedFileName.split('.').pop()
       const uniqueFileName = `${projectId}/${timestamp}-${sanitizedFileName}`
-
-      console.log('Uploading file (sanitized)...')
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
@@ -1599,6 +1599,7 @@ class SupabaseService {
         .single()
 
       if (fileError || !fileRecord) {
+        console.error('File metadata error:', fileError)
         throw new Error('File not found or access denied')
       }
 
