@@ -1,6 +1,15 @@
 /**
  * File Upload Security Constants
- * Critical security settings to prevent malicious file uploads
+ * 
+ * Comprehensive file type support for research collaboration while maintaining security.
+ * Supports academic, scientific, statistical, and creative file formats.
+ * 
+ * Security Notes:
+ * - Script files (Python, R, MATLAB, etc.) are allowed for research sharing
+ * - These files should NEVER be executed automatically by the application
+ * - Files are stored in isolated storage buckets with no execution permissions
+ * - All files go through filename sanitization to prevent path traversal
+ * - Size limits prevent DoS attacks
  */
 
 // Maximum file sizes (in bytes)
@@ -31,22 +40,116 @@ export const ALLOWED_MIME_TYPES = {
     'text/plain',
     'text/csv',
     'application/json',
+    'text/markdown',
+    'application/rtf',
+    'text/rtf',
     
-    // Images
+    // Statistical & Data Science Files
+    'application/x-sas', // SAS files
+    'application/x-sas-data', // .sas7bdat
+    'application/x-stata', // Stata files
+    'application/x-stata-dta', // .dta files
+    'application/x-spss', // SPSS files
+    'application/x-spss-sav', // .sav files
+    'text/x-r', // R scripts
+    'text/x-r-source', // .R files
+    'application/x-r-data', // .RData, .rda
+    'text/x-matlab', // MATLAB scripts
+    'application/matlab', // .mat files
+    'text/x-python', // Python scripts
+    'application/x-python-code', // .py files
+    'application/x-ipynb+json', // Jupyter notebooks
+    'text/x-julia', // Julia scripts
+    'application/x-hdf', // HDF5 data files
+    'application/x-netcdf', // NetCDF files
+    
+    // Programming & Scripts (for research)
+    'text/x-c',
+    'text/x-c++',
+    'text/x-java',
+    'text/javascript',
+    'application/javascript',
+    'text/x-sql',
+    'application/sql',
+    'text/x-latex',
+    'application/x-latex',
+    'application/x-tex',
+    'text/x-bibtex',
+    'text/html',
+    'text/css',
+    'application/xml',
+    'text/xml',
+    'application/x-yaml',
+    'text/yaml',
+    
+    // Adobe Creative Suite
+    'application/x-photoshop', // .psd
+    'image/vnd.adobe.photoshop',
+    'application/x-indesign', // .indd
+    'application/x-illustrator', // .ai
+    'application/postscript', // .eps, .ai
+    'application/x-adobe-acrobat', // .pdf (Adobe specific)
+    'application/vnd.adobe.aftereffects.project', // .aep
+    'application/vnd.adobe.premiere.project', // .prproj
+    'application/vnd.adobe.xd', // Adobe XD
+    
+    // Images (expanded)
     'image/jpeg',
     'image/jpg',
     'image/png',
     'image/gif',
     'image/webp',
     'image/svg+xml',
+    'image/tiff',
+    'image/bmp',
+    'image/x-icon',
+    'image/heic',
+    'image/heif',
+    'image/raw', // RAW photo formats
     
-    // Videos (limited)
+    // Videos & Audio (for presentations/research)
     'video/mp4',
     'video/quicktime', // .mov
+    'video/x-msvideo', // .avi
+    'video/x-ms-wmv', // .wmv
+    'video/webm',
+    'audio/mpeg', // .mp3
+    'audio/wav',
+    'audio/x-wav',
+    'audio/mp4',
+    'audio/x-m4a',
     
-    // Archives
+    // Scientific & Medical formats
+    'application/dicom', // Medical imaging
+    'chemical/x-pdb', // Protein Data Bank
+    'chemical/x-mol', // Molecular files
+    'application/x-gzip', // Compressed research data
+    'application/gzip',
+    
+    // CAD & 3D Models (for engineering research)
+    'application/x-autocad', // .dwg
+    'application/dxf', // .dxf
+    'model/stl', // 3D printing
+    'model/obj', // 3D models
+    
+    // Archives (expanded)
     'application/zip',
-    'application/x-zip-compressed'
+    'application/x-zip-compressed',
+    'application/x-rar-compressed',
+    'application/x-7z-compressed',
+    'application/x-tar',
+    'application/x-gtar',
+    
+    // Other research/academic formats
+    'application/vnd.google-earth.kml+xml', // KML for geographic data
+    'application/vnd.google-earth.kmz', // KMZ
+    'application/x-endnote-library', // EndNote
+    'application/x-bibtex', // BibTeX
+    'application/x-research-info-systems', // RIS citation format
+    'application/marc', // Library catalog records
+    
+    // Fallback for unrecognized types (with caution)
+    'application/octet-stream' // Binary files
   ]
 } as const;
 
@@ -55,13 +158,73 @@ export const ALLOWED_EXTENSIONS = {
   PROFILE_PICTURE: ['jpg', 'jpeg', 'png', 'gif', 'webp'],
   PROJECT_FILE: [
     // Documents
-    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'json',
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'json', 
+    'md', 'rtf', 'odt', 'ods', 'odp',
+    
+    // Statistical & Data Science
+    'sas', 'sas7bdat', 'sas7bcat', 'sd2', 'sd7', 'sas7bndx', 'sas7bpgm',
+    'dta', 'do', 'ado', // Stata
+    'sav', 'spv', 'sps', 'spss', // SPSS
+    'r', 'R', 'rda', 'rdata', 'rds', 'Rproj', 'Rmd', 'Rnw', // R
+    'm', 'mat', 'mlx', 'mex', 'fig', 'mdl', 'slx', // MATLAB
+    'py', 'ipynb', 'pyc', 'pyo', 'pyw', 'pyx', 'pyd', // Python
+    'jl', // Julia
+    'h5', 'hdf5', 'he5', // HDF5
+    'nc', 'nc4', 'netcdf', // NetCDF
+    
+    // Programming & Scripts
+    'c', 'cpp', 'cc', 'cxx', 'h', 'hpp', 'hxx',
+    'java', 'class', 'jar',
+    'js', 'jsx', 'ts', 'tsx', 'mjs',
+    'sql', 'sqlite', 'db',
+    'tex', 'latex', 'bib', 'cls', 'sty', 'bst',
+    'html', 'htm', 'css', 'scss', 'sass', 'less',
+    'xml', 'xsl', 'xslt', 'xsd',
+    'yaml', 'yml',
+    'sh', 'bash', 'zsh', 'fish', 'ps1', 'bat', 'cmd',
+    
+    // Adobe Creative Suite
+    'psd', 'psb', // Photoshop
+    'ai', 'ait', 'eps', // Illustrator
+    'indd', 'indt', 'indl', 'indb', 'inx', 'idml', // InDesign
+    'aep', 'aepx', 'aet', // After Effects
+    'prproj', 'ppj', // Premiere Pro
+    'xd', // Adobe XD
+    'fla', 'swf', // Flash/Animate
+    
     // Images
-    'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg',
-    // Videos
-    'mp4', 'mov',
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'tiff', 'tif', 'bmp', 
+    'ico', 'heic', 'heif', 'raw', 'cr2', 'nef', 'arw', 'dng', 'orf',
+    
+    // Videos & Audio
+    'mp4', 'mov', 'avi', 'wmv', 'flv', 'webm', 'mkv', 'mpg', 'mpeg',
+    'mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma', 'aiff', 'ape',
+    
+    // Scientific & Medical
+    'dcm', 'dicom', // Medical imaging
+    'pdb', 'mol', 'mol2', 'sdf', // Chemistry
+    'fasta', 'fastq', 'sam', 'bam', 'vcf', // Bioinformatics
+    'fits', 'fit', // Astronomy
+    
+    // CAD & 3D
+    'dwg', 'dxf', 'dwf', // AutoCAD
+    'stl', 'obj', 'fbx', 'dae', '3ds', 'ply', // 3D models
+    'step', 'stp', 'iges', 'igs', // CAD exchange
+    
+    // GIS & Mapping
+    'kml', 'kmz', 'gpx', 'shp', 'shx', 'dbf', 'prj', 'geojson',
+    
     // Archives
-    'zip'
+    'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz',
+    
+    // Other academic/research
+    'ris', 'enw', 'bib', 'nbib', // Citations
+    'mm', 'mmap', 'xmind', // Mind maps
+    'vsd', 'vsdx', 'vdx', // Visio
+    'one', 'onepkg', 'onetoc2', // OneNote
+    
+    // Data files
+    'parquet', 'feather', 'arrow', 'avro', 'orc' // Big data formats
   ]
 } as const;
 
