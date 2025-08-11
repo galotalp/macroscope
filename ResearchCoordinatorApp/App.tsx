@@ -81,6 +81,18 @@ export default function App() {
         return;
       }
       
+      // For TOKEN_REFRESHED events, just update the session without changing screens
+      // This prevents getting stuck in loading when tokens are refreshed
+      if (event === 'TOKEN_REFRESHED' && session?.user) {
+        console.log('Handling TOKEN_REFRESHED event - updating session without navigation changes');
+        setState(prev => ({
+          ...prev,
+          session: session,
+          isLoading: false,
+        }));
+        return;
+      }
+      
       // For SIGNED_OUT events, immediately go to login without waiting
       if (event === 'SIGNED_OUT') {
         console.log('User signed out - navigating to login');

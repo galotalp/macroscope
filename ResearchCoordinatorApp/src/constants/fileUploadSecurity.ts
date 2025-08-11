@@ -44,6 +44,17 @@ export const ALLOWED_MIME_TYPES = {
     'application/rtf',
     'text/rtf',
     
+    // LibreOffice formats
+    'application/vnd.oasis.opendocument.text', // .odt (Writer)
+    'application/vnd.oasis.opendocument.spreadsheet', // .ods (Calc)
+    'application/vnd.oasis.opendocument.presentation', // .odp (Impress)
+    'application/vnd.oasis.opendocument.graphics', // .odg (Draw)
+    'application/vnd.oasis.opendocument.formula', // .odf (Math)
+    'application/vnd.oasis.opendocument.database', // .odb (Base)
+    'application/vnd.oasis.opendocument.text-template', // .ott (Writer templates)
+    'application/vnd.oasis.opendocument.spreadsheet-template', // .ots (Calc templates)
+    'application/vnd.oasis.opendocument.presentation-template', // .otp (Impress templates)
+    
     // Statistical & Data Science Files
     'application/x-sas', // SAS files
     'application/x-sas-data', // .sas7bdat
@@ -140,6 +151,28 @@ export const ALLOWED_MIME_TYPES = {
     'application/x-tar',
     'application/x-gtar',
     
+    // Apple iWork Suite
+    'application/vnd.apple.pages', // Pages documents
+    'application/x-iwork-pages-sffpages', // Pages (legacy)
+    'application/vnd.apple.numbers', // Numbers spreadsheets
+    'application/x-iwork-numbers-sffnumbers', // Numbers (legacy)
+    'application/vnd.apple.keynote', // Keynote presentations
+    'application/x-iwork-keynote-sffkey', // Keynote (legacy)
+    
+    // Linux/Unix specific formats
+    'application/x-deb', // Debian packages
+    'application/x-rpm', // RPM packages
+    'application/x-snap', // Snap packages
+    'application/x-appimage', // AppImage
+    'application/x-flatpak', // Flatpak
+    'text/x-shellscript', // Shell scripts
+    'application/x-desktop', // Desktop entry files
+    'text/x-makefile', // Makefiles
+    'text/x-cmake', // CMake files
+    'text/x-dockerfile', // Dockerfiles
+    'application/x-yaml', // YAML config files
+    'text/x-systemd-unit', // Systemd unit files
+    
     // Other research/academic formats
     'application/vnd.google-earth.kml+xml', // KML for geographic data
     'application/vnd.google-earth.kmz', // KMZ
@@ -159,7 +192,13 @@ export const ALLOWED_EXTENSIONS = {
   PROJECT_FILE: [
     // Documents
     'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'json', 
-    'md', 'rtf', 'odt', 'ods', 'odp',
+    'md', 'rtf',
+    
+    // LibreOffice/OpenOffice formats
+    'odt', 'ods', 'odp', 'odg', 'odf', 'odb', // LibreOffice documents
+    'ott', 'ots', 'otp', 'otg', 'otf', // LibreOffice templates
+    'fodt', 'fods', 'fodp', 'fodg', // LibreOffice flat XML formats
+    'sxw', 'sxc', 'sxi', 'sxd', 'sxm', // OpenOffice.org 1.0 formats
     
     // Statistical & Data Science
     'sas', 'sas7bdat', 'sas7bcat', 'sd2', 'sd7', 'sas7bndx', 'sas7bpgm',
@@ -216,6 +255,20 @@ export const ALLOWED_EXTENSIONS = {
     
     // Archives
     'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'tgz',
+    
+    // Apple iWork Suite
+    'pages', 'template', // Pages documents
+    'numbers', 'numb', // Numbers spreadsheets
+    'key', 'kth', // Keynote presentations
+    
+    // Linux/Unix formats
+    'deb', 'rpm', 'snap', 'appimage', 'flatpak', // Package formats
+    'desktop', 'service', 'timer', 'socket', // System files
+    'makefile', 'make', 'mk', // Build files
+    'dockerfile', 'containerfile', // Container files
+    'cmake', 'cmakelists', // CMake files
+    'conf', 'cfg', 'ini', 'config', // Config files
+    'log', 'pid', 'lock', // System files
     
     // Other academic/research
     'ris', 'enw', 'bib', 'nbib', // Citations
