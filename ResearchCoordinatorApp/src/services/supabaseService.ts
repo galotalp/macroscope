@@ -326,20 +326,18 @@ class SupabaseService {
       
       console.log('Uploading profile picture...')
 
-      // Use Supabase's built-in React Native support with FormData
-      const formData = new FormData()
-      formData.append('file', {
-        uri: imageUri,
-        name: sanitizedFileName,
-        type: mimeType,
-      } as any)
+      // Convert image to blob for React Native
+      // This is more reliable in production iOS builds
+      const response = await fetch(imageUri)
+      const blob = await response.blob()
 
-      // Upload using Supabase storage
+      // Upload using Supabase storage with blob
       const { data, error } = await supabase.storage
         .from('profile-pictures')
-        .upload(filePath, formData, {
+        .upload(filePath, blob, {
           cacheControl: '3600',
           upsert: true,
+          contentType: mimeType,
         })
 
       if (error) {
