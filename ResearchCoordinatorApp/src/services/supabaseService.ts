@@ -1,3 +1,4 @@
+import { Platform } from 'react-native'
 import { supabase } from '../config/supabase'
 import { User } from '../types'
 import { 
@@ -326,18 +327,29 @@ class SupabaseService {
       
       console.log('Uploading profile picture...')
 
-      // Convert image to blob for React Native
-      // This is more reliable in production iOS builds
-      const response = await fetch(imageUri)
-      const blob = await response.blob()
+      // Create proper FormData for React Native
+      // The key is to ensure the URI is properly formatted
+      const formData = new FormData()
+      
+      // For iOS, ensure we have the correct file URI format
+      let fileUri = imageUri
+      if (Platform.OS === 'ios' && !imageUri.startsWith('file://')) {
+        fileUri = `file://${imageUri}`
+      }
+      
+      // Append file with proper structure for React Native
+      formData.append('file', {
+        uri: fileUri,
+        name: sanitizedFileName,
+        type: mimeType,
+      } as any)
 
-      // Upload using Supabase storage with blob
+      // Upload using Supabase storage
       const { data, error } = await supabase.storage
         .from('profile-pictures')
-        .upload(filePath, blob, {
+        .upload(filePath, formData, {
           cacheControl: '3600',
           upsert: true,
-          contentType: mimeType,
         })
 
       if (error) {
