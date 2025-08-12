@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Email - MacroScope</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .logo h1 {
+            color: #667eea;
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+        
+        .icon {
+            font-size: 80px;
+            margin: 20px 0;
+        }
+        
+        .icon.success {
+            color: #4caf50;
+        }
+        
+        .icon.error {
+            color: #f44336;
+        }
+        
+        .icon.loading {
+            color: #667eea;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .message {
+            color: #333;
+            font-size: 18px;
+            margin: 20px 0;
+            line-height: 1.6;
+        }
+        
+        .submessage {
+            color: #666;
+            font-size: 14px;
+            margin: 15px 0;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 14px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>MacroScope</h1>
+        </div>
+        
+        <div id="content">
+            <div class="icon loading">⟳</div>
+            <div class="message">Verifying your email...</div>
+            <div class="submessage">Please wait a moment</div>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+        
+        // Initialize Supabase client
+        const supabaseUrl = 'https://ipaquntaeftocyvxoawo.supabase.co'
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwYXF1bnRhZWZ0b2N5dnhvYXdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTIzNDgwODMsImV4cCI6MjA2NzkyNDA4M30.Yh4Xgulb_jo3BXbNMjxJ-4aF6oWJImGu3hQ6Pysx460'
+        const supabase = createClient(supabaseUrl, supabaseAnonKey)
+        
+        const contentDiv = document.getElementById('content')
+        
+        async function verifyEmail() {
+            try {
+                // Get the token from URL parameters
+                const urlParams = new URLSearchParams(window.location.search)
+                const hashParams = new URLSearchParams(window.location.hash.substring(1))
+                
+                const token = urlParams.get('token')
+                const type = urlParams.get('type')
+                const accessToken = urlParams.get('access_token') || hashParams.get('access_token')
+                const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token')
+                const error = urlParams.get('error') || hashParams.get('error')
+                
+                console.log('Verification parameters:', {
+                    token: token ? 'present' : 'missing',
+                    type: type,
+                    accessToken: accessToken ? 'present' : 'missing',
+                    refreshToken: refreshToken ? 'present' : 'missing',
+                    error: error,
+                    fullURL: window.location.href
+                })
+                
+                // Check for errors first
+                if (error) {
+                    throw new Error(`Verification error: ${error}`)
+                }
+                
+                // If we have access tokens, the verification already happened via redirect
+                if (accessToken && refreshToken) {
+                    // Set the session to verify the email
+                    const { data, error: sessionError } = await supabase.auth.setSession({
+                        access_token: accessToken,
+                        refresh_token: refreshToken
+                    })
+                    
+                    if (sessionError) {
+                        throw sessionError
+                    }
+                    
+                    // Sign out after verification (optional)
+                    await supabase.auth.signOut()
+                    
+                    showSuccess()
+                } else if (token && type) {
+                    // Handle different verification types
+                    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+                        token_hash: token,
+                        type: type === 'signup' ? 'signup' : 'email'
+                    })
+                    
+                    if (verifyError) {
+                        throw verifyError
+                    }
+                    
+                    showSuccess()
+                } else {
+                    // No valid parameters found
+                    throw new Error('No valid verification parameters found')
+                }
+            } catch (error) {
+                console.error('Verification error:', error)
+                showError(error.message)
+            }
+        }
+        
+        function showSuccess() {
+            const userAgent = navigator.userAgent.toLowerCase()
+            const isMobile = userAgent.includes('iphone') || userAgent.includes('ipad') || userAgent.includes('android')
+            
+            contentDiv.innerHTML = `
+                <div class="icon success">✓</div>
+                <div class="message">Email Verified Successfully!</div>
+                <div class="submessage">Your email has been verified. You can now login to MacroScope.</div>
+                <a href="${isMobile ? 'macroscope://' : 'https://macroscope.info'}" class="btn">
+                    ${isMobile ? 'Open MacroScope App' : 'Go to Website'}
+                </a>
+            `
+        }
+        
+        function showError(message) {
+            contentDiv.innerHTML = `
+                <div class="icon error">✗</div>
+                <div class="message">Verification Failed</div>
+                <div class="submessage">${message || 'The verification link is invalid or has expired.'}</div>
+                <a href="https://macroscope.info" class="btn">Go to Website</a>
+            `
+        }
+        
+        // Start verification process
+        verifyEmail()
+    </script>
+</body>
+</html>

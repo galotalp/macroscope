@@ -10,6 +10,9 @@ class SupabaseService {
   // Auth cache to reduce redundant getUser() calls
   private static userCache: { user: any; expiry: number } | null = null
   private static CACHE_DURATION = 60 * 1000 // 1 minute
+  
+  // Track password reset attempts to prevent rate limiting
+  private static passwordResetAttempts: Map<string, number[]> = new Map()
 
   private async getCachedUser() {
     const now = Date.now()
@@ -50,7 +53,7 @@ class SupabaseService {
           data: {
             username: username
           },
-          emailRedirectTo: 'https://macroscope.info/verify-email' // Enable email confirmation
+          emailRedirectTo: 'https://macroscope.info/verify-email' // Web page that handles verification and deep links to app
         }
       })
 
@@ -198,14 +201,40 @@ class SupabaseService {
 
   async forgotPassword(email: string) {
     try {
+      // Check client-side rate limiting to prevent hitting Supabase limits
+      const now = Date.now()
+      const attempts = SupabaseService.passwordResetAttempts.get(email) || []
+      
+      // Remove attempts older than 1 hour
+      const recentAttempts = attempts.filter(time => now - time < 3600000)
+      
+      // Supabase allows 4 attempts per hour per email - be conservative with 2
+      if (recentAttempts.length >= 2) {
+        const oldestAttempt = recentAttempts[0]
+        const waitTime = Math.ceil((3600000 - (now - oldestAttempt)) / 60000)
+        throw new Error(`Too many password reset attempts. Please wait ${waitTime} minutes and try again.`)
+      }
+      
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'macroscope://reset-password' // Deep link back to app
+        redirectTo: 'https://macroscope.info/reset-password',
+        captchaToken: undefined // Ensure no interference from other settings
       })
 
       if (error) {
+        // Handle Supabase rate limiting with friendly message
+        if (error.message?.includes('rate limit') || 
+            error.message?.includes('over_email_send_rate_limit') ||
+            error.status === 429) {
+          throw new Error('Too many password reset attempts. Please wait an hour and try again.')
+        }
+        
         throw new Error(error.message)
       }
 
+      // Record successful attempt for client-side rate limiting
+      recentAttempts.push(now)
+      SupabaseService.passwordResetAttempts.set(email, recentAttempts)
+      
       return { message: 'Password reset email sent successfully!' }
     } catch (error: any) {
       console.error('Forgot password failed:', error)

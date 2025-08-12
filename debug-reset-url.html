@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Password Reset URL</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .info { background: #f0f8ff; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .error { background: #ffe6e6; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Password Reset URL Debug</h1>
+    
+    <div class="info">
+        <h3>Current URL:</h3>
+        <pre id="currentUrl"></pre>
+    </div>
+    
+    <div class="info">
+        <h3>URL Parameters:</h3>
+        <pre id="urlParams"></pre>
+    </div>
+    
+    <div class="info">
+        <h3>Hash Fragment:</h3>
+        <pre id="hashFragment"></pre>
+    </div>
+    
+    <div class="error">
+        <h3>Expected Parameters for Supabase Password Reset:</h3>
+        <ul>
+            <li><strong>access_token</strong> - JWT access token</li>
+            <li><strong>refresh_token</strong> - JWT refresh token</li>
+            <li><strong>type</strong> - Should be "recovery"</li>
+            <li><strong>token_hash</strong> - Recovery token (alternative)</li>
+        </ul>
+    </div>
+    
+    <div class="info">
+        <h3>Possible Issues:</h3>
+        <ul>
+            <li>Supabase email template doesn't include {{ .ConfirmationURL }}</li>
+            <li>Email is linking to wrong URL</li>
+            <li>Redirect URL in Supabase dashboard is misconfigured</li>
+            <li>Email client is stripping parameters</li>
+        </ul>
+    </div>
+    
+    <script>
+        // Display current URL
+        document.getElementById('currentUrl').textContent = window.location.href;
+        
+        // Parse and display URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const params = {};
+        for (const [key, value] of urlParams.entries()) {
+            params[key] = value;
+        }
+        document.getElementById('urlParams').textContent = JSON.stringify(params, null, 2);
+        
+        // Display hash fragment (sometimes tokens are in hash)
+        document.getElementById('hashFragment').textContent = window.location.hash || '(none)';
+        
+        // Also check hash for tokens (some auth flows use hash)
+        if (window.location.hash) {
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            console.log('Hash parameters:', Object.fromEntries(hashParams.entries()));
+        }
+    </script>
+</body>
+</html>
