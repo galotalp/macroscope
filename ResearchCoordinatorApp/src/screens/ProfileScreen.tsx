@@ -22,6 +22,7 @@ import {
   useTheme,
 } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImage as pickImageHelper } from '../utils/platformHelpers';
 import supabaseService from '../services/supabaseService';
 import ProfilePictureSelector from '../components/ProfilePictureSelector';
 import UserAvatar from '../components/UserAvatar';
@@ -123,21 +124,39 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
 
   const pickImage = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please grant permission to access your photos.');
-        return;
-      }
+      if (Platform.OS === 'web') {
+        // Simple web image picker
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = async (e) => {
+          const target = e.target as HTMLInputElement;
+          const file = target.files?.[0];
+          if (file) {
+            const fileName = `profile_${Date.now()}.jpg`;
+            await uploadProfilePicture(file, fileName);
+          }
+        };
+        input.click();
+      } else {
+        // Native image picker
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Please grant permission to access your photos.');
+          return;
+        }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.8,
+        });
 
-      if (!result.canceled && result.assets[0]) {
-        await uploadProfilePicture(result.assets[0].uri);
+        if (!result.canceled && result.assets[0]) {
+          const fileName = `profile_${Date.now()}.jpg`;
+          await uploadProfilePicture(result.assets[0].uri, fileName);
+        }
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -145,11 +164,10 @@ const ProfileScreen: React.FC<ProfileScreenProps> = ({
     }
   };
 
-  const uploadProfilePicture = async (imageUri: string) => {
+  const uploadProfilePicture = async (imageData: string | File, fileName: string) => {
     setUploadingImage(true);
     try {
-      const fileName = `profile_${Date.now()}.jpg`;
-      const response = await supabaseService.uploadProfilePicture(imageUri, fileName);
+      const response = await supabaseService.uploadProfilePicture(imageData, fileName);
       
       if (response.user) {
         onUserUpdate(response.user);

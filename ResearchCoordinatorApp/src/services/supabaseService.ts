@@ -299,7 +299,7 @@ class SupabaseService {
     }
   }
 
-  async uploadProfilePicture(imageUri: string, fileName: string) {
+  async uploadProfilePicture(imageData: string | File, fileName: string) {
     try {
       const { data: { user }, error: authError } = await this.getCachedUser()
       
@@ -327,33 +327,58 @@ class SupabaseService {
       
       console.log('Uploading profile picture...')
 
-      // Create proper FormData for React Native
-      // The key is to ensure the URI is properly formatted
-      const formData = new FormData()
-      
-      // For iOS, ensure we have the correct file URI format
-      let fileUri = imageUri
-      if (Platform.OS === 'ios' && !imageUri.startsWith('file://')) {
-        fileUri = `file://${imageUri}`
+      let uploadData: any
+
+      if (Platform.OS === 'web') {
+        // For web, handle File objects directly
+        if (imageData instanceof File) {
+          uploadData = imageData
+        } else if (typeof imageData === 'string' && (imageData.startsWith('data:') || imageData.startsWith('blob:'))) {
+          const response = await fetch(imageData)
+          uploadData = await response.blob()
+        } else {
+          throw new Error('Invalid image data for web')
+        }
+      } else {
+        // For native platforms, use FormData
+        const imageUri = typeof imageData === 'string' ? imageData : imageData.uri
+        console.log('Native image URI:', imageUri)
+        
+        let fileUri = imageUri
+        if (Platform.OS === 'ios' && !imageUri.startsWith('file://')) {
+          fileUri = `file://${imageUri}`
+        }
+        
+        console.log('Final file URI:', fileUri)
+        
+        const formData = new FormData()
+        
+        // Append file with proper structure for React Native
+        formData.append('file', {
+          uri: fileUri,
+          name: sanitizedFileName,
+          type: mimeType,
+        } as any)
+        
+        uploadData = formData
       }
-      
-      // Append file with proper structure for React Native
-      formData.append('file', {
-        uri: fileUri,
-        name: sanitizedFileName,
-        type: mimeType,
-      } as any)
 
       // Upload using Supabase storage
+      console.log('Uploading to path:', filePath)
+      console.log('Upload data type:', typeof uploadData)
+      console.log('Content type:', mimeType)
+      
       const { data, error } = await supabase.storage
         .from('profile-pictures')
-        .upload(filePath, formData, {
+        .upload(filePath, uploadData, {
           cacheControl: '3600',
           upsert: true,
+          contentType: mimeType,
         })
 
       if (error) {
-        throw new Error(error.message)
+        console.error('Profile picture upload error:', error)
+        throw new Error(`Profile picture upload failed: ${error.message}`)
       }
 
       // Get the public URL
@@ -1504,27 +1529,40 @@ class SupabaseService {
       }
 
       // Prepare file for upload
-      let fileData: Blob
+      let fileData: any
       let fileName: string
       let mimeType: string
       let fileSize: number
 
-      if (file.uri) {
-        // React Native file - use direct URI approach
-        fileData = {
+      if (Platform.OS === 'web') {
+        // Web handling - check if it's a File object directly
+        if (file instanceof File || file instanceof Blob) {
+          // Direct File/Blob object from web file picker
+          fileData = file
+          fileName = file.name || `upload-${Date.now()}.bin`
+          mimeType = file.type || 'application/octet-stream'
+          fileSize = file.size || 0
+        } else if (file.file && (file.file instanceof File || file.file instanceof Blob)) {
+          // File object wrapped in another object
+          fileData = file.file
+          fileName = file.name || file.file.name || `upload-${Date.now()}.bin`
+          mimeType = file.mimeType || file.file.type || 'application/octet-stream'
+          fileSize = file.size || file.file.size || 0
+        } else {
+          throw new Error('Invalid file format for web')
+        }
+      } else {
+        // React Native file - use FormData
+        const formData = new FormData()
+        formData.append('file', {
           uri: file.uri,
           type: file.mimeType || file.type || 'application/octet-stream',
           name: file.name || `upload-${Date.now()}.bin`
-        } as any
+        } as any)
         
+        fileData = formData
         fileName = file.name || `upload-${Date.now()}.bin`
         mimeType = file.mimeType || file.type || 'application/octet-stream'
-        fileSize = file.size
-      } else {
-        // Web File object
-        fileData = file
-        fileName = file.name
-        mimeType = file.type
         fileSize = file.size
       }
 
@@ -1643,12 +1681,17 @@ class SupabaseService {
       }
 
       // Create signed URL for download
+      console.log('Creating signed URL for path:', fileRecord.file_path)
+      console.log('User ID:', user.id)
+      
       const { data: signedUrlData, error: urlError } = await supabase.storage
         .from('project-files')
         .createSignedUrl(fileRecord.file_path, 3600) // Valid for 1 hour
 
       if (urlError) {
-        throw new Error(urlError.message)
+        console.error('Signed URL error:', urlError)
+        console.error('File record:', fileRecord)
+        throw new Error(`Failed to create download URL: ${urlError.message}`)
       }
 
       return {

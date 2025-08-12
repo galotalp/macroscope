@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, TextInput, Alert, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, TextInput, Platform, KeyboardAvoidingView } from 'react-native';
 import { Appbar, Card, Title, Button, Text, FAB, Snackbar, ActivityIndicator, List, Checkbox, IconButton, Chip, Dialog, Portal, Menu, Divider, SegmentedButtons, Avatar } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { downloadFile, showAlert, pickDocument } from '../utils/platformHelpers';
 import UserAvatar from '../components/UserAvatar';
 import supabaseService from '../services/supabaseService';
 import { transformErrorMessage } from '../utils/errorMessages';
@@ -220,33 +221,56 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
 
   const handleFileUpload = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-      });
-
-      console.log('DocumentPicker result:', result);
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
-        console.log('Selected file:', file);
-        
-        setUploading(true);
-
-        // Create a File object for the upload with proper structure
-        const fileToUpload = {
-          uri: file.uri,
-          name: file.name,
-          mimeType: file.mimeType,
-          type: file.mimeType || 'application/octet-stream',
-          size: file.size
+      if (Platform.OS === 'web') {
+        // Simple web file picker
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.onchange = async (e) => {
+          const target = e.target as HTMLInputElement;
+          const file = target.files?.[0];
+          if (file) {
+            setUploading(true);
+            try {
+              await supabaseService.uploadProjectFile(projectId, file);
+              showSnackbar('File uploaded successfully');
+              loadProjectFiles();
+            } catch (error) {
+              console.error('Error uploading file:', error);
+              showSnackbar(transformErrorMessage(error), 'red');
+            } finally {
+              setUploading(false);
+            }
+          }
         };
+        input.click();
+      } else {
+        // Native file picker
+        const result = await DocumentPicker.getDocumentAsync({
+          type: '*/*',
+          copyToCacheDirectory: true,
+        });
 
-        console.log('File to upload:', fileToUpload);
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+          const file = result.assets[0];
+          console.log('Selected file:', file);
+          
+          setUploading(true);
 
-        await supabaseService.uploadProjectFile(projectId, fileToUpload);
-        showSnackbar('File uploaded successfully');
-        loadProjectFiles(); // Refresh the file list
+          // Create a File object for the upload with proper structure
+          const fileToUpload = {
+            uri: file.uri,
+            name: file.name,
+            mimeType: file.mimeType,
+            type: file.mimeType || 'application/octet-stream',
+            size: file.size
+          };
+
+          console.log('File to upload:', fileToUpload);
+
+          await supabaseService.uploadProjectFile(projectId, fileToUpload);
+          showSnackbar('File uploaded successfully');
+          loadProjectFiles(); // Refresh the file list
+        }
       }
     } catch (error) {
       console.error('Error uploading file:', error);
@@ -268,47 +292,9 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
         throw new Error('No download URL received');
       }
 
-      // Download to local storage first
-      const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const fileUri = FileSystem.documentDirectory + sanitizedFilename;
-      
-      const downloadResult = await FileSystem.downloadAsync(downloadUrl, fileUri);
-      
-      if (downloadResult.status !== 200) {
-        throw new Error(`Download failed with status: ${downloadResult.status}`);
-      }
-      
-      // Check file exists
-      const fileInfo = await FileSystem.getInfoAsync(downloadResult.uri);
-      
-      if (!fileInfo.exists) {
-        throw new Error('Downloaded file not found');
-      }
-      
-      if (fileInfo.size === 0) {
-        throw new Error('Downloaded file is empty');
-      }
-      
-      showSnackbar('File ready! Choose where to save...', 'green');
-      
-      // Use Expo Sharing to present native iOS share sheet
-      if (await Sharing.isAvailableAsync()) {
-        try {
-          await Sharing.shareAsync(downloadResult.uri, {
-            mimeType: result.mimeType,
-            dialogTitle: `Save ${filename}`,
-            UTI: result.mimeType
-          });
-          showSnackbar('File shared successfully!', 'green');
-        } catch (shareError) {
-          console.error('Share error:', shareError);
-          showSnackbar('File saved to app storage', 'orange');
-          console.log('File saved at:', downloadResult.uri);
-        }
-      } else {
-        showSnackbar('File downloaded successfully!', 'green');
-        console.log('File saved at:', downloadResult.uri);
-      }
+      // Use platform-specific download
+      await downloadFile(downloadUrl, filename, result.mimeType);
+      showSnackbar('File downloaded successfully!', 'green');
       
     } catch (error) {
       console.error('Error downloading file:', error);
@@ -319,7 +305,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
   };
 
   const handleFileDelete = async (fileId: string, filename: string) => {
-    Alert.alert(
+    showAlert(
       'Delete File',
       `Are you sure you want to delete "${filename}"?`,
       [
@@ -329,12 +315,16 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
           style: 'destructive',
           onPress: async () => {
             try {
+              setDeleting(true);
               await supabaseService.deleteProjectFile(projectId, fileId);
               showSnackbar('File deleted successfully');
-              loadProjectFiles(); // Refresh the file list
+              // Simple reload after successful deletion
+              await loadProjectFiles();
             } catch (error) {
               console.error('Error deleting file:', error);
               showSnackbar(transformErrorMessage(error), 'red');
+            } finally {
+              setDeleting(false);
             }
           },
         },
@@ -374,7 +364,7 @@ const ProjectDetailsScreen: React.FC<ProjectDetailsScreenProps> = ({ projectId, 
   };
 
   const handleRemoveMember = async (userId: string, username: string) => {
-    Alert.alert(
+    showAlert(
       'Remove Member',
       `Are you sure you want to remove "${username}" from this project?`,
       [
