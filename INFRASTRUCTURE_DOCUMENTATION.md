@@ -15,9 +15,9 @@
 
 The Research Coordinator Application is a collaborative research management platform built with:
 - **Database**: Supabase (PostgreSQL with Row Level Security)
-- **Backend**: Node.js/Express with TypeScript
 - **Frontend**: React Native/Expo (mobile-first, cross-platform)
 - **Authentication**: Supabase Auth with JWT tokens
+- **Email**: Amazon SES for transactional emails (via Supabase SMTP configuration)
 
 The application enables research groups to collaborate on projects, manage files, track progress through checklists, and coordinate team activities.
 
@@ -31,13 +31,11 @@ The application enables research groups to collaborate on projects, manage files
 │   (Expo Framework)      │
 └───────────┬─────────────┘
             │
-            ├──── Direct Supabase Connection (Auth & Realtime)
-            │
-            ▼
-┌─────────────────────────┐
-│   Express Backend       │
-│   (Node.js/TypeScript)  │
-└───────────┬─────────────┘
+            ├──── Direct Supabase Connection
+            │     • Authentication
+            │     • Database Queries (via RLS)
+            │     • File Storage
+            │     • Realtime Updates
             │
             ▼
 ┌─────────────────────────┐
@@ -46,13 +44,20 @@ The application enables research groups to collaborate on projects, manage files
 │   - Auth Service        │
 │   - Storage Service     │
 │   - Realtime Updates    │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│   Amazon SES            │
+│   (Email Service)       │
 └─────────────────────────┘
 ```
 
 ### Key Design Decisions
-1. **Dual Connection Pattern**: The app connects directly to Supabase for auth and realtime updates, while using the Express backend for complex business logic
+1. **Direct Supabase Integration**: The app connects directly to Supabase without a backend server, leveraging RLS for security
 2. **Mobile-First**: Built with React Native/Expo for iOS, Android, and web compatibility
 3. **Row Level Security**: Database-level security policies ensure data isolation between groups
+4. **Serverless Architecture**: No backend server needed - all business logic handled via Supabase functions and RLS policies
 
 ## Database Structure
 
@@ -180,60 +185,43 @@ All tables have RLS enabled with policies ensuring:
 - Project access is restricted to group members
 - File operations require appropriate group membership
 
-## Backend API
+## Supabase Direct API Access
 
-### Base URL: `http://localhost:3000/api`
+### Authentication
+All database operations are performed directly through Supabase client library with RLS policies enforcing security. The app uses:
 
-### Authentication Endpoints (`/auth`)
-- `POST /register` - User registration with email verification
-- `POST /login` - User login, returns JWT token
-- `GET /verify-email` - Email verification handler
-- `POST /resend-verification` - Resend verification email
-- `POST /forgot-password` - Initialize password reset
-- `GET /reset-password` - Validate reset token
-- `POST /reset-password` - Complete password reset
+- **Supabase Auth**: Handles user registration, login, email verification, and password reset
+- **JWT Tokens**: Automatically managed by Supabase client
+- **Session Management**: Persisted in AsyncStorage for mobile apps
 
-### User Endpoints (`/users`)
-- `GET /profile` - Get current user profile
-- `PUT /profile` - Update user profile
-- `POST /profile/upload-picture` - Upload profile picture
-- `POST /change-password` - Change user password
+### Database Operations
+Direct queries to Supabase tables with RLS policies:
 
-### Group Endpoints (`/groups`)
-- `GET /` - List user's groups
-- `POST /` - Create new group
-- `GET /search` - Search groups by invite code
-- `POST /:groupId/join` - Join group with invite code
-- `POST /:groupId/request-join` - Request to join group
-- `GET /:groupId/details` - Get group details with members
-- `PUT /:groupId` - Update group information
-- `DELETE /:groupId` - Delete group (creator only)
-- `DELETE /:groupId/members/:userId` - Remove member
-- `POST /:groupId/join-requests/:requestId/:action` - Approve/reject join request
-- `GET /pending-requests-count` - Get count of pending requests
-- `GET /:groupId/members` - List group members
+#### Users
+- Profile creation/updates via `supabase.from('users')`
+- Automatic user creation on auth signup
 
-### Project Endpoints (`/projects`)
-- `GET /group/:groupId` - List group projects
-- `POST /` - Create new project
-- `GET /:projectId` - Get project details
-- `PUT /:projectId` - Update project
-- `DELETE /:projectId` - Delete project
-- `POST /:projectId/checklist` - Add checklist item
-- `PUT /:projectId/checklist/:itemId` - Update checklist item
-- `DELETE /:projectId/checklist/:itemId` - Delete checklist item
-- `GET /group/:groupId/members` - Get potential project members
-- `POST /:projectId/assign` - Assign members to project
-- `DELETE /:projectId/assign/:userId` - Remove project member
-- `POST /:projectId/files` - Upload file (multipart/form-data)
-- `GET /:projectId/files` - List project files
-- `GET /:projectId/files/:fileId/download` - Download file
-- `DELETE /:projectId/files/:fileId` - Delete file
+#### Groups
+- Create, read, update, delete operations
+- Invite code generation and validation
+- Membership management
 
-### Middleware
-- **authenticateToken**: JWT validation for protected routes
-- **CORS**: Enabled for cross-origin requests
-- **Body Parser**: JSON (50MB limit) and URL-encoded support
+#### Projects
+- CRUD operations within groups
+- File attachments via Storage API
+- Checklist management
+- Member assignments
+
+### Storage Operations
+- **profile-pictures bucket**: Public access for user avatars
+- **project-files bucket**: Private with RLS policies
+- Direct file upload/download via Supabase Storage API
+
+### Real-time Subscriptions
+- Group membership changes
+- Join request notifications
+- Project updates
+- All handled via `supabase.channel()` subscriptions
 
 ## Frontend Application
 
@@ -303,10 +291,10 @@ All tables have RLS enabled with policies ensuring:
 4. **Input Validation**: Check constraints on enums and data types
 
 ### API Security
-1. **JWT Authentication**: All protected routes require valid tokens
-2. **User Context**: auth.uid() used in all RLS policies
-3. **CORS Configuration**: Restricted to allowed origins
-4. **Rate Limiting**: Not currently implemented (recommended)
+1. **Row Level Security**: All database operations filtered by auth.uid()
+2. **Supabase Auth**: Handles authentication and session management
+3. **Storage Policies**: Separate policies for public and private buckets
+4. **Rate Limiting**: Handled by Supabase platform limits
 
 ### Application Security
 1. **Secure Storage**: Credentials stored in AsyncStorage
@@ -316,32 +304,30 @@ All tables have RLS enabled with policies ensuring:
 
 ## Identified Issues and Inconsistencies
 
-### Critical Issues
+### Current Considerations
 
-1. **Backend Server Not Required for Basic Operation**
-   - The app connects directly to Supabase for most operations
-   - Backend is only needed for file uploads and complex operations
-   - This creates confusion about when the backend is needed
+1. **Serverless Architecture**
+   - No backend server - all operations via Supabase
+   - Simplified deployment and maintenance
+   - Cost-effective for current scale
 
-2. **Duplicate Route Files**
-   - Multiple versions of route files exist (groups.ts, groups-temp.ts, groups-full.ts, groups-demo.ts)
-   - Should consolidate to single, authoritative versions
+2. **Email Verification**
+   - Fully functional via Supabase Auth
+   - Redirects to https://macroscope.info/verify-email
+   - Deep linking support for mobile apps
 
-3. **Inconsistent Error Handling**
-   - Some endpoints return detailed errors, others return generic messages
-   - No standardized error response format
-
-4. **Missing Email Verification**
-   - Email verification is disabled (emailRedirectTo: undefined)
-   - Users can access the app without verifying email
+3. **Public Credentials**
+   - Supabase URL and anon key are safely exposed in frontend
+   - These are public by design and secured via RLS policies
+   - Service role key never exposed to client
 
 ### Medium Priority Issues
 
-5. **No Rate Limiting**
-   - API endpoints have no rate limiting
-   - Vulnerable to abuse and DOS attacks
+4. **Rate Limiting**
+   - Handled by Supabase platform (varies by plan)
+   - Consider implementing application-level throttling for sensitive operations
 
-6. **File Upload Security**
+5. **File Upload Security**
    - No virus scanning on uploaded files
    - File size limits only enforced client-side
    - No file type validation beyond MIME type
@@ -356,12 +342,12 @@ All tables have RLS enabled with policies ensuring:
 
 ### Low Priority Issues
 
-9. **Code Organization**
-   - Demo routes mixed with production code
-   - Unused SQL migration files in repository
-   - No clear separation of concerns in some components
+8. **Code Organization**
+   - Clean separation between screens, services, and components
+   - TypeScript interfaces for type safety
+   - Consistent file structure
 
-10. **Documentation**
+9. **Documentation**
     - No API documentation (OpenAPI/Swagger)
     - Missing code comments in complex functions
     - No deployment documentation
@@ -370,27 +356,22 @@ All tables have RLS enabled with policies ensuring:
 
 ### Environment Variables
 
-#### Backend (.env)
-```bash
-SUPABASE_URL=https://ipaquntaeftocyvxoawo.supabase.co
-SUPABASE_ANON_KEY=<anon_key>
-SUPABASE_SERVICE_ROLE_KEY=<service_role_key>
-JWT_SECRET=<jwt_secret>
-PORT=3000
-```
-
-#### Frontend (hardcoded - should be environment variables)
+#### Frontend Configuration
 ```typescript
+// src/config/supabase.ts
 const supabaseUrl = 'https://ipaquntaeftocyvxoawo.supabase.co'
 const supabaseAnonKey = '<anon_key>'
 ```
 
+**Note**: The Supabase URL and anon key are public by design. They are safe to include in frontend code as all security is enforced through Row Level Security policies on the database side.
+
 ### Development Setup
-1. Install PostgreSQL (via Supabase)
-2. Run database migrations
-3. Install Node.js dependencies
-4. Start backend server: `npm run dev`
-5. Start Expo development server: `npm start`
+1. Clone the repository
+2. Install Node.js dependencies: `npm install`
+3. Start Expo development server: `npm start`
+4. Run on iOS simulator: `i`
+5. Run on Android emulator: `a`
+6. Run on web: `w`
 
 ### Production Considerations
 - SSL certificates required for HTTPS
@@ -424,10 +405,20 @@ const supabaseAnonKey = '<anon_key>'
 
 ## Conclusion
 
-The Research Coordinator Application has a solid foundation with modern technologies and good architectural choices. The main areas for improvement are:
-- Security hardening (rate limiting, file validation)
-- Code organization and cleanup
-- Documentation and testing
-- Production readiness (monitoring, backups, deployment)
+The Research Coordinator Application has a solid foundation with modern technologies and excellent architectural choices:
 
-The dual connection pattern (direct Supabase + Express backend) works but could be simplified by choosing one approach consistently. The application would benefit from a comprehensive security audit and performance optimization before production deployment.
+**Strengths**:
+- Clean serverless architecture with direct Supabase integration
+- Strong security through Row Level Security policies
+- Cross-platform support (iOS, Android, Web)
+- Real-time collaboration features
+- Cost-effective infrastructure
+
+**Areas for Enhancement**:
+- Add application-level rate limiting for sensitive operations
+- Implement comprehensive testing suite
+- Set up monitoring and analytics
+- Complete Android deployment
+- Finalize web hosting on AWS
+
+The direct Supabase integration pattern eliminates the need for a backend server while maintaining security through RLS policies. This architecture is production-ready and scales well for the application's needs.
