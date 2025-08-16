@@ -79,7 +79,7 @@ const EmailVerificationScreen: React.FC<EmailVerificationScreenProps> = ({
         // Wait a moment to show the success message, then go to login
         setTimeout(() => {
           onNavigateToLogin(true); // Pass true to indicate successful verification
-        }, 2000);
+        }, 3000);
       } else if (!isAutoCheck) {
         // Only show "not verified" message for manual checks, not auto-checks
         setSnackbarMessage('Email not yet verified. Please check your email and click the verification link.');

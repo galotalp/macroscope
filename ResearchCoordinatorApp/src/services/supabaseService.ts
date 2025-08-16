@@ -2091,6 +2091,89 @@ class SupabaseService {
     }
   }
 
+  // ==================== ACCOUNT DELETION METHODS ====================
+
+  // Analyze what will happen when current user deletes their account
+  async analyzeAccountDeletion() {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data, error } = await supabase
+        .rpc('analyze_user_deletion_secure', {
+          target_user_id: user.id
+        })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return data[0] // RPC returns array, we want the first item
+    } catch (error: any) {
+      console.error('Error analyzing account deletion:', error)
+      throw error
+    }
+  }
+
+  // Transfer ownership of a group to another member
+  async transferGroupOwnership(groupId: string, newAdminId: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { error } = await supabase
+        .rpc('transfer_group_ownership_secure', {
+          target_group_id: groupId,
+          old_admin_id: user.id,
+          new_admin_id: newAdminId
+        })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return { message: 'Group ownership transferred successfully' }
+    } catch (error: any) {
+      console.error('Error transferring group ownership:', error)
+      throw error
+    }
+  }
+
+  // Delete current user's account with optional ownership transfers
+  async deleteUserAccount(transferMappings?: Array<{group_id: string, new_admin_id: string}>) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data, error } = await supabase
+        .rpc('delete_user_account_secure', {
+          target_user_id: user.id,
+          transfer_mappings: transferMappings ? JSON.stringify(transferMappings) : null
+        })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      // Sign out the user after successful deletion
+      await this.logout()
+
+      return data
+    } catch (error: any) {
+      console.error('Error deleting user account:', error)
+      throw error
+    }
+  }
+
   // ==================== HELPER METHODS ====================
 
   // Get current user session

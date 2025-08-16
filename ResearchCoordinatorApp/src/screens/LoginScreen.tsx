@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { TextInput, Button, Card, Title, Snackbar, ActivityIndicator, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +23,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [successSnackbarVisible, setSuccessSnackbarVisible] = useState(!!registrationMessage);
+
+  useEffect(() => {
+    if (registrationMessage) {
+      setSuccessSnackbarVisible(true);
+    }
+  }, [registrationMessage]);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -80,8 +86,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
                 mode="outlined"
                 keyboardType="email-address"
                 autoCapitalize="none"
-                autoComplete="email"
-                textContentType="emailAddress"
+                autoComplete="off"
+                textContentType="none"
                 disabled={loading}
                 outlineColor={colors.borderLight}
                 activeOutlineColor={colors.primary}
@@ -95,8 +101,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
                 mode="outlined"
                 secureTextEntry={!showPassword}
                 disabled={loading}
-                autoComplete="current-password"
-                textContentType="password"
+                autoComplete="off"
+                textContentType="none"
                 outlineColor={colors.borderLight}
                 activeOutlineColor={colors.primary}
                 right={<TextInput.Icon 

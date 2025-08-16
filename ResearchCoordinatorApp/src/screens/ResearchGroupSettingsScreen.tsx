@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { 
   Appbar, 
   Card, 
@@ -96,6 +96,13 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
   const [checklistItemDescription, setChecklistItemDescription] = useState('');
   const [checklistItemLoading, setChecklistItemLoading] = useState(false);
 
+  // Ownership transfer state
+  const [transferDialogVisible, setTransferDialogVisible] = useState(false);
+  const [selectedNewAdmin, setSelectedNewAdmin] = useState<string | null>(null);
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [isGroupCreator, setIsGroupCreator] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
   useEffect(() => {
     loadGroupDetails();
   }, [groupId]);
@@ -108,6 +115,13 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
       setMembers(response.members || []);
       setJoinRequests(response.joinRequests || []);
       setIsAdmin(response.isAdmin || false);
+
+      // Check if current user is the group creator
+      const currentUser = await supabaseService.getCurrentUser();
+      if (currentUser && response.group) {
+        setCurrentUserId(currentUser.id);
+        setIsGroupCreator(response.group.created_by === currentUser.id);
+      }
 
       // Load default checklist items
       await loadDefaultChecklistItems();
@@ -225,6 +239,32 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
     } catch (error) {
       console.error('Error deleting group:', error);
       showSnackbar(error instanceof Error ? error.message : 'Failed to delete group', 'red');
+    }
+  };
+
+  // Ownership transfer handlers
+  const handleTransferOwnership = () => {
+    setSelectedNewAdmin(null);
+    setTransferDialogVisible(true);
+  };
+
+  const confirmTransferOwnership = async () => {
+    if (!selectedNewAdmin) {
+      showSnackbar('Please select a new admin', 'red');
+      return;
+    }
+
+    try {
+      setTransferLoading(true);
+      await supabaseService.transferGroupOwnership(groupId, selectedNewAdmin);
+      showSnackbar('Group ownership transferred successfully');
+      setTransferDialogVisible(false);
+      await loadGroupDetails(); // Refresh data
+    } catch (error) {
+      console.error('Error transferring ownership:', error);
+      showSnackbar(error instanceof Error ? error.message : 'Failed to transfer ownership', 'red');
+    } finally {
+      setTransferLoading(false);
     }
   };
 
@@ -523,6 +563,27 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
           </Card>
         )}
 
+        {/* Transfer Ownership - Group Creator Only */}
+        {isGroupCreator && members.length > 1 && (
+          <Card style={styles.card}>
+            <Card.Content>
+              <Title style={styles.transferTitle}>Transfer Ownership</Title>
+              <Text style={styles.transferDescription}>
+                Transfer ownership of this group to another member. The new owner will gain full admin privileges and you will become a regular member.
+              </Text>
+              <Button
+                mode="outlined"
+                onPress={handleTransferOwnership}
+                style={styles.transferButton}
+                icon="account-switch"
+                disabled={transferLoading}
+              >
+                Transfer Ownership
+              </Button>
+            </Card.Content>
+          </Card>
+        )}
+
         {/* Delete Group - Admin Only */}
         {isAdmin && (
           <Card style={styles.card}>
@@ -603,6 +664,59 @@ const ResearchGroupSettingsScreen: React.FC<ResearchGroupSettingsScreenProps> = 
             <Button onPress={() => setChecklistDialogVisible(false)}>Cancel</Button>
             <Button onPress={handleSaveChecklistItem} mode="contained" disabled={checklistItemLoading}>
               {checklistItemLoading ? <ActivityIndicator size="small" color="white" /> : 'Save'}
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
+
+      {/* Transfer Ownership Dialog */}
+      <Portal>
+        <Dialog visible={transferDialogVisible} onDismiss={() => setTransferDialogVisible(false)}>
+          <Dialog.Title>Transfer Group Ownership</Dialog.Title>
+          <Dialog.Content>
+            <Text style={styles.dialogDescription}>
+              Select a new owner for "{groupDetails?.name}". You will become a regular member and lose admin privileges.
+            </Text>
+            <Text style={styles.dialogSubtext}>
+              Choose from current group members:
+            </Text>
+            {members
+              .filter(member => member.users.id !== currentUserId)
+              .map((member) => (
+                <TouchableOpacity
+                  key={member.id}
+                  style={[
+                    styles.memberSelector,
+                    selectedNewAdmin === member.users.id && styles.memberSelectorSelected
+                  ]}
+                  onPress={() => setSelectedNewAdmin(member.users.id)}
+                >
+                  <UserAvatar
+                    profilePictureUrl={member.users?.profile_picture}
+                    username={member.users?.username || 'Unknown'}
+                    size={40}
+                  />
+                  <View style={styles.memberSelectorInfo}>
+                    <Text style={styles.memberSelectorName}>{member.users?.username}</Text>
+                    <Text style={styles.memberSelectorEmail}>{member.users?.email}</Text>
+                  </View>
+                  {selectedNewAdmin === member.users.id && (
+                    <IconButton icon="check" size={20} iconColor={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))
+            }
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setTransferDialogVisible(false)} disabled={transferLoading}>
+              Cancel
+            </Button>
+            <Button 
+              onPress={confirmTransferOwnership} 
+              mode="contained" 
+              disabled={transferLoading || !selectedNewAdmin}
+            >
+              {transferLoading ? <ActivityIndicator size="small" color="white" /> : 'Transfer Ownership'}
             </Button>
           </Dialog.Actions>
         </Dialog>
@@ -834,6 +948,65 @@ const styles = StyleSheet.create({
   },
   dialogInput: {
     marginBottom: 12,
+  },
+  // Transfer ownership styles
+  transferTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1976d2',
+    marginBottom: 8,
+  },
+  transferDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  transferButton: {
+    marginTop: 8,
+    borderColor: '#1976d2',
+  },
+  // Dialog styles
+  dialogDescription: {
+    fontSize: 14,
+    color: '#333',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  dialogSubtext: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#666',
+    marginBottom: 12,
+  },
+  // Member selector styles
+  memberSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  memberSelectorSelected: {
+    borderColor: '#1976d2',
+    backgroundColor: '#e3f2fd',
+  },
+  memberSelectorInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  memberSelectorName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  memberSelectorEmail: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
   },
 });
 
