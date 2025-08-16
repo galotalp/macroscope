@@ -69,6 +69,13 @@ class SupabaseService {
         throw new Error('Registration failed - no user data returned')
       }
 
+      // Check if this is an existing user (Supabase security feature)
+      // When both email and phone confirmation are enabled, Supabase returns a fake user object for existing users
+      // We can detect this by checking if the identities array is empty
+      if (authData.user.identities && authData.user.identities.length === 0) {
+        throw new Error('User already registered')
+      }
+
       // User profile will be created automatically by the database trigger
       
       return {
@@ -1785,14 +1792,16 @@ class SupabaseService {
       }
 
       // Check if user is already a project member
-      const { data: existingMember } = await supabase
+      const { data: existingMember, error: checkError } = await supabase
         .from('project_members')
         .select('id')
         .eq('project_id', projectId)
         .eq('user_id', userId)
         .single()
 
-      if (existingMember) {
+      // Only throw error if we definitely found an existing member
+      // Ignore PGRST116 error (no rows found) which is what we want
+      if (existingMember && !checkError) {
         throw new Error('User is already a member of this project')
       }
 
@@ -2157,7 +2166,7 @@ class SupabaseService {
       const { data, error } = await supabase
         .rpc('delete_user_account_secure', {
           target_user_id: user.id,
-          transfer_mappings: transferMappings ? JSON.stringify(transferMappings) : null
+          transfer_mappings: transferMappings && transferMappings.length > 0 ? transferMappings : null
         })
 
       if (error) {
@@ -2188,6 +2197,845 @@ class SupabaseService {
   // Listen to auth state changes
   onAuthStateChange(callback: (event: string, session: any) => void) {
     return supabase.auth.onAuthStateChange(callback)
+  }
+
+  // Validate invitation token (for email invitations)
+  async validateInvitationToken(token: string, email: string) {
+    try {
+      const { data: invitation, error } = await supabase
+        .from('pending_email_invitations')
+        .select(`
+          id,
+          group_id,
+          invited_email,
+          status,
+          expires_at,
+          groups!inner(name, description)
+        `)
+        .eq('invitation_token', token)
+        .eq('invited_email', email.toLowerCase().trim())
+        .in('status', ['pending', 'sent'])
+        .gt('expires_at', new Date().toISOString())
+        .single()
+
+      if (error || !invitation) {
+        throw new Error('Invalid or expired invitation')
+      }
+
+      return {
+        groupId: invitation.group_id,
+        groupName: invitation.groups.name,
+        groupDescription: invitation.groups.description,
+        email: invitation.invited_email
+      }
+    } catch (error: any) {
+      console.error('Error validating invitation token:', error)
+      throw error
+    }
+  }
+
+  // ==================== GROUP INVITATION METHODS ====================
+  
+  async inviteUserToGroup(groupId: string, email: string, message?: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Try to find the user by email (normalize both sides for comparison)
+      const normalizedEmail = email.trim().toLowerCase()
+      const { data: invitedUser, error: userError } = await supabase
+        .from('users')
+        .select('id, username, email')
+        .eq('email', normalizedEmail)
+        .maybeSingle()
+
+      // Also check if user lookup failed due to database error
+      if (userError) {
+        console.error('Error looking up user by email:', userError)
+        throw new Error('Unable to check if user exists. Please try again.')
+      }
+
+      console.log('User lookup result:', { email: normalizedEmail, invitedUser })
+      
+      if (invitedUser) {
+        // User exists - create regular invitation
+        console.log('Creating regular invitation for existing user:', invitedUser.id)
+        const { data: invitation, error: inviteError } = await supabase
+          .from('group_invitations')
+          .insert({
+            group_id: groupId,
+            invited_by: user.id,
+            invited_user_id: invitedUser.id,
+            invited_email: email.trim().toLowerCase(),
+            message: message?.trim() || null
+          })
+          .select()
+          .single()
+
+        if (inviteError) {
+          if (inviteError.message.includes('already a member')) {
+            throw new Error('User is already a member of this group')
+          }
+          if (inviteError.message.includes('pending invitation')) {
+            throw new Error('User already has a pending invitation to this group')
+          }
+          throw new Error(inviteError.message)
+        }
+
+        return { invitation, invitedUser, isNewUser: false }
+      } else {
+        // User doesn't exist - create pending email invitation
+        console.log('User not found, creating pending email invitation for:', normalizedEmail)
+        const { data: pendingInvitation, error: pendingError } = await supabase
+          .from('pending_email_invitations')
+          .insert({
+            group_id: groupId,
+            invited_by: user.id,
+            invited_email: email.trim().toLowerCase(),
+            message: message?.trim() || null
+          })
+          .select()
+          .single()
+
+        if (pendingError) {
+          if (pendingError.message.includes('already has an account')) {
+            throw new Error('This email already has an account. Please try again.')
+          }
+          if (pendingError.message.includes('pending invitation')) {
+            throw new Error('This email already has a pending invitation to this group')
+          }
+          throw new Error(pendingError.message)
+        }
+
+        // Send invitation email via your API endpoint
+        try {
+          // Get group and user details for the email
+          const { data: groupData } = await supabase
+            .from('groups')
+            .select('name')
+            .eq('id', groupId)
+            .single()
+
+          const { data: userData } = await supabase
+            .from('users')
+            .select('username')
+            .eq('id', user.id)
+            .single()
+
+          // Call AWS Lambda API endpoint to send the email
+          const response = await fetch('https://3zl1q5kfmf.execute-api.us-west-2.amazonaws.com/prod/send-invitation', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              recipientEmail: email.trim().toLowerCase(),
+              groupName: groupData?.name || 'Research Group',
+              inviterName: userData?.username || 'Someone',
+              message: message?.trim() || null,
+              invitationToken: pendingInvitation.invitation_token,
+              invitationId: pendingInvitation.id
+            })
+          })
+
+          if (response.ok) {
+            const result = await response.json()
+            console.log('Email sent successfully:', result)
+            
+            // Mark as sent
+            await supabase
+              .from('pending_email_invitations')
+              .update({ 
+                status: 'sent',
+                email_sent_at: new Date().toISOString()
+              })
+              .eq('id', pendingInvitation.id)
+          } else {
+            console.warn('Failed to send email:', await response.text())
+          }
+        } catch (error) {
+          console.warn('Error sending invitation email:', error)
+          // Don't throw - invitation was created successfully
+        }
+
+        return { 
+          invitation: pendingInvitation, 
+          invitedUser: null, 
+          isNewUser: true,
+          message: 'Invitation email will be sent to the user. They will be automatically added to the group when they sign up.'
+        }
+      }
+    } catch (error: any) {
+      console.error('Error inviting user:', error)
+      throw error
+    }
+  }
+
+  async getPendingEmailInvitations(groupId: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data: pendingInvitations, error } = await supabase
+        .from('pending_email_invitations_with_details')
+        .select('*')
+        .eq('group_id', groupId)
+        .in('status', ['pending', 'sent'])
+        .order('invited_at', { ascending: false })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return pendingInvitations || []
+    } catch (error: any) {
+      console.error('Error fetching pending email invitations:', error)
+      throw error
+    }
+  }
+
+  async getGroupInvitations(groupId: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data: invitations, error } = await supabase
+        .from('group_invitations_with_details')
+        .select('*')
+        .eq('group_id', groupId)
+        .order('invited_at', { ascending: false })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return invitations || []
+    } catch (error: any) {
+      console.error('Error fetching group invitations:', error)
+      throw error
+    }
+  }
+
+  async getUserInvitations() {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data: invitations, error } = await supabase
+        .from('group_invitations_with_details')
+        .select('*')
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending')
+        .gte('expires_at', new Date().toISOString())
+        .order('invited_at', { ascending: false })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return invitations || []
+    } catch (error: any) {
+      console.error('Error fetching user invitations:', error)
+      throw error
+    }
+  }
+
+  async getUserStats() {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Get total groups user belongs to
+      const { count: totalGroups, error: groupsError } = await supabase
+        .from('group_memberships')
+        .select('id', { count: 'exact' })
+        .eq('user_id', user.id)
+
+      if (groupsError) {
+        throw new Error('Failed to fetch groups count: ' + groupsError.message)
+      }
+
+      // Get project IDs for projects user is a member of
+      const userProjectIds = await this.getUserProjectIds(user.id)
+      
+      // Get projects the user created or is a member of
+      let projectQuery = supabase
+        .from('projects')
+        .select('id, priority, created_by')
+        .eq('created_by', user.id)
+
+      // If user has project memberships, include those too
+      if (userProjectIds) {
+        projectQuery = supabase
+          .from('projects')
+          .select('id, priority, created_by')
+          .or(`created_by.eq.${user.id},id.in.(${userProjectIds})`)
+      }
+
+      const { data: userProjects, error: projectsError } = await projectQuery
+
+      if (projectsError) {
+        throw new Error('Failed to fetch user projects: ' + projectsError.message)
+      }
+
+      // Calculate project statistics
+      const totalProjects = userProjects?.length || 0
+      const completedProjects = userProjects?.filter(p => p.priority === 'completed').length || 0
+
+      // Get all project IDs to fetch checklist items
+      const allProjectIds = userProjects?.map(p => p.id) || []
+      
+      let totalTasks = 0
+      let completedTasks = 0
+      let uncompletedTasks = 0
+
+      if (allProjectIds.length > 0) {
+        // Get all checklist items for user's projects
+        const { data: checklistItems, error: checklistError } = await supabase
+          .from('project_checklist_items')
+          .select('id, completed')
+          .in('project_id', allProjectIds)
+
+        if (checklistError) {
+          console.warn('Error fetching checklist items:', checklistError)
+        } else {
+          checklistItems?.forEach(task => {
+            totalTasks++
+            if (task.completed) {
+              completedTasks++
+            } else {
+              uncompletedTasks++
+            }
+          })
+        }
+      }
+
+      return {
+        totalGroups: totalGroups || 0,
+        totalProjects,
+        completedProjects,
+        totalTasks,
+        completedTasks,
+        uncompletedTasks
+      }
+    } catch (error: any) {
+      console.error('Error fetching user stats:', error)
+      throw error
+    }
+  }
+
+  private async getUserProjectIds(userId: string): Promise<string> {
+    try {
+      const { data: projectMemberships, error } = await supabase
+        .from('project_members')
+        .select('project_id')
+        .eq('user_id', userId)
+
+      if (error) {
+        console.warn('Error fetching project memberships:', error)
+        return ''
+      }
+
+      const projectIds = projectMemberships?.map(pm => pm.project_id) || []
+      return projectIds.length > 0 ? projectIds.join(',') : ''
+    } catch (error) {
+      console.warn('Error in getUserProjectIds:', error)
+      return ''
+    }
+  }
+
+  async respondToInvitation(invitationId: string, action: 'accept' | 'decline') {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const status = action === 'accept' ? 'accepted' : 'declined'
+      
+      const { data: invitation, error } = await supabase
+        .from('group_invitations')
+        .update({ 
+          status,
+          responded_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', invitationId)
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending')
+        .select()
+        .single()
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      if (!invitation) {
+        throw new Error('Invitation not found or already responded to')
+      }
+
+      return invitation
+    } catch (error: any) {
+      console.error('Error responding to invitation:', error)
+      throw error
+    }
+  }
+
+  async cancelInvitation(invitationId: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data: invitation, error } = await supabase
+        .from('group_invitations')
+        .update({ 
+          status: 'expired',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', invitationId)
+        .eq('status', 'pending')
+        .select()
+        .single()
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return invitation
+    } catch (error: any) {
+      console.error('Error canceling invitation:', error)
+      throw error
+    }
+  }
+
+  // ==================== GROUP LEAVING METHODS ====================
+  
+  async analyzeGroupLeaving(groupId: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Get group details and user's role
+      const { data: groupDetails } = await supabase
+        .from('groups')
+        .select(`
+          id, name, description,
+          group_memberships!inner(
+            role,
+            user_id
+          )
+        `)
+        .eq('id', groupId)
+        .eq('group_memberships.user_id', user.id)
+        .single()
+
+      if (!groupDetails) {
+        throw new Error('Group not found or you are not a member')
+      }
+
+      // Count total members and admins
+      const { data: memberCount } = await supabase
+        .from('group_memberships')
+        .select('id', { count: 'exact' })
+        .eq('group_id', groupId)
+
+      const { data: adminCount } = await supabase
+        .from('group_memberships')
+        .select('id', { count: 'exact' })
+        .eq('group_id', groupId)
+        .eq('role', 'admin')
+
+      // Get user's owned projects in this group
+      const { data: ownedProjects } = await supabase
+        .from('projects')
+        .select(`
+          id, name, description,
+          project_members(
+            user_id,
+            users!user_id(username, email)
+          )
+        `)
+        .eq('group_id', groupId)
+        .eq('created_by', user.id)
+
+      // Get other group members for project transfer options
+      const { data: otherMembers } = await supabase
+        .from('group_memberships')
+        .select(`
+          user_id,
+          role,
+          users(
+            id, username, email
+          )
+        `)
+        .eq('group_id', groupId)
+        .neq('user_id', user.id)
+
+      const userRole = groupDetails.group_memberships[0]?.role
+      const totalMembers = memberCount?.length || 0
+      const totalAdmins = adminCount?.length || 0
+      const isOnlyMember = totalMembers === 1
+      const isOnlyAdmin = userRole === 'admin' && totalAdmins === 1
+
+      return {
+        group: {
+          id: groupDetails.id,
+          name: groupDetails.name,
+          description: groupDetails.description
+        },
+        userRole,
+        totalMembers,
+        totalAdmins,
+        isOnlyMember,
+        isOnlyAdmin,
+        ownedProjects: ownedProjects || [],
+        otherMembers: (otherMembers || []).map(m => ({
+          id: m.users?.id || m.user_id,
+          username: m.users?.username || 'Unknown',
+          email: m.users?.email || 'No email',
+          role: m.role
+        })),
+        canLeave: !isOnlyAdmin, // Can leave unless only admin
+        requiresProjectTransfer: (ownedProjects?.length || 0) > 0,
+        willDeleteGroup: isOnlyMember
+      }
+    } catch (error: any) {
+      console.error('Error analyzing group leaving:', error)
+      throw error
+    }
+  }
+
+  async leaveGroup(groupId: string, projectTransfers?: Array<{project_id: string, new_owner_id: string}>) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data, error } = await supabase
+        .rpc('leave_group_secure', {
+          target_group_id: groupId,
+          leaving_user_id: user.id,
+          project_transfers: projectTransfers && projectTransfers.length > 0 ? projectTransfers : null
+        })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return data
+    } catch (error: any) {
+      console.error('Error leaving group:', error)
+      throw error
+    }
+  }
+
+  // ==================== PENDING INVITATION METHODS ====================
+
+  async checkPendingInvitationsOnLogin() {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Call the function to check and update any pending invitations
+      const { data, error } = await supabase
+        .rpc('check_pending_invitations_for_user', {
+          user_email: user.email
+        })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      const result = data?.[0] || { invitations_updated: 0, invitation_details: [] }
+      
+      if (result.invitations_updated > 0) {
+        console.log(`Updated ${result.invitations_updated} pending invitations for ${user.email}`)
+      }
+
+      return {
+        invitationsUpdated: result.invitations_updated,
+        invitations: result.invitation_details || []
+      }
+    } catch (error: any) {
+      console.error('Error checking pending invitations on login:', error)
+      // Don't throw - this is not critical for login
+      return { invitationsUpdated: 0, invitations: [] }
+    }
+  }
+
+  async getPendingInvitations() {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Get both email invitations and regular invitations
+      const [emailInvitations, regularInvitations] = await Promise.all([
+        // Email invitations (from the view)
+        supabase
+          .from('user_pending_invitations')
+          .select('*')
+          .order('invited_at', { ascending: false }),
+        
+        // Regular invitations (from group_invitations table)
+        supabase
+          .from('group_invitations')
+          .select(`
+            id,
+            message,
+            invited_at,
+            expires_at,
+            groups:group_id (
+              name,
+              description
+            ),
+            inviter:invited_by (
+              username
+            )
+          `)
+          .eq('invited_user_id', user.id)
+          .eq('status', 'pending')
+          .gt('expires_at', new Date().toISOString())
+          .order('invited_at', { ascending: false })
+      ])
+
+      if (emailInvitations.error) {
+        console.error('Error fetching email invitations:', emailInvitations.error)
+      }
+
+      if (regularInvitations.error) {
+        console.error('Error fetching regular invitations:', regularInvitations.error)
+        throw new Error(regularInvitations.error.message)
+      }
+
+      // Combine and format both types of invitations
+      const allInvitations = []
+
+      // Add email invitations (already in correct format)
+      if (emailInvitations.data) {
+        allInvitations.push(...emailInvitations.data)
+      }
+
+      // Add regular invitations (convert to same format)
+      if (regularInvitations.data) {
+        regularInvitations.data.forEach(invitation => {
+          allInvitations.push({
+            id: invitation.id,
+            invitation_token: null, // Regular invitations don't use tokens
+            message: invitation.message,
+            invited_at: invitation.invited_at,
+            expires_at: invitation.expires_at,
+            group_name: invitation.groups?.name || 'Unknown Group',
+            group_description: invitation.groups?.description,
+            inviter_username: invitation.inviter?.username || 'Someone',
+            type: 'regular' // Add type to distinguish
+          })
+        })
+      }
+
+      // Sort by invitation date (newest first)
+      allInvitations.sort((a, b) => new Date(b.invited_at).getTime() - new Date(a.invited_at).getTime())
+
+      return allInvitations
+    } catch (error: any) {
+      console.error('Error fetching pending invitations:', error)
+      throw error
+    }
+  }
+
+  async acceptInvitation(invitationToken: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data, error } = await supabase
+        .rpc('accept_invitation', {
+          invitation_token: invitationToken
+        })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Failed to accept invitation')
+      }
+
+      return data
+    } catch (error: any) {
+      console.error('Error accepting invitation:', error)
+      throw error
+    }
+  }
+
+  async acceptRegularInvitation(invitationId: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      // Update the invitation status to accepted
+      const { data: invitation, error: updateError } = await supabase
+        .from('group_invitations')
+        .update({ 
+          status: 'accepted',
+          responded_at: new Date().toISOString()
+        })
+        .eq('id', invitationId)
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending')
+        .select('group_id')
+        .single()
+
+      if (updateError) {
+        throw new Error(updateError.message)
+      }
+
+      if (!invitation) {
+        throw new Error('Invitation not found or already responded to')
+      }
+
+      // Add user to the group
+      const { error: membershipError } = await supabase
+        .from('group_memberships')
+        .insert({
+          group_id: invitation.group_id,
+          user_id: user.id,
+          role: 'member'
+        })
+
+      if (membershipError && !membershipError.message.includes('duplicate key')) {
+        throw new Error(membershipError.message)
+      }
+
+      return { success: true, message: 'Successfully joined the group' }
+    } catch (error: any) {
+      console.error('Error accepting regular invitation:', error)
+      throw error
+    }
+  }
+
+  async declineRegularInvitation(invitationId: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data, error } = await supabase
+        .from('group_invitations')
+        .update({ 
+          status: 'declined',
+          responded_at: new Date().toISOString()
+        })
+        .eq('id', invitationId)
+        .eq('invited_user_id', user.id)
+        .eq('status', 'pending')
+        .select()
+        .single()
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      if (!data) {
+        throw new Error('Invitation not found or already responded to')
+      }
+
+      return { success: true, message: 'Invitation declined' }
+    } catch (error: any) {
+      console.error('Error declining regular invitation:', error)
+      throw error
+    }
+  }
+
+  async declineInvitation(invitationToken: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data, error } = await supabase
+        .rpc('decline_invitation', {
+          invitation_token: invitationToken
+        })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Failed to decline invitation')
+      }
+
+      return data
+    } catch (error: any) {
+      console.error('Error declining invitation:', error)
+      throw error
+    }
+  }
+
+  async getPendingJoinRequests(groupId: string) {
+    try {
+      const { data: { user }, error: authError } = await this.getCachedUser()
+      
+      if (authError || !user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { data: requests, error } = await supabase
+        .from('group_join_requests_with_user_details')
+        .select('*')
+        .eq('group_id', groupId)
+        .eq('status', 'pending')
+        .order('requested_at', { ascending: false })
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return requests || []
+    } catch (error: any) {
+      console.error('Error fetching pending join requests:', error)
+      throw error
+    }
   }
 }
 

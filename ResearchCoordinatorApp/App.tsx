@@ -30,6 +30,11 @@ interface AppState {
   registrationMessage?: string;
   pendingVerificationEmail?: string;
   pendingVerificationPassword?: string;
+  navigationContext?: {
+    previousScreen: Screen;
+    selectedGroupId?: string | null;
+    selectedProjectId?: string | null;
+  };
 }
 
 
@@ -64,20 +69,18 @@ export default function App() {
       // Clear the loading timeout since we got a response
       clearTimeout(loadingTimeout);
       
-      // For USER_UPDATED events (like password changes), navigate to groups immediately
-      // Don't try to refresh user data during this event as it can cause hangs
+      // For USER_UPDATED events (like password changes), update session but don't auto-navigate
+      // Users should stay on their current screen after password changes
       if (event === 'USER_UPDATED' && session?.user) {
-        console.log('Handling USER_UPDATED event - navigating to groups without profile refresh');
+        console.log('Handling USER_UPDATED event - updating session without navigation');
         
-        console.log('Setting state and navigating to groups');
+        // Update session but keep user on current screen
         setState(prev => ({
           ...prev,
           session: session,
-          currentScreen: 'groups',
-          selectedGroupId: null,
           isLoading: false,
         }));
-        console.log('State updated successfully');
+        
         return;
       }
       
@@ -112,16 +115,20 @@ export default function App() {
         try {
           const userProfile = await supabaseService.getUserProfile();
           
+          // Check for any pending invitations and update them
+          await supabaseService.checkPendingInvitationsOnLogin();
+          
           // Check for last visited group
           const lastVisitedGroupId = await AsyncStorage.getItem('lastVisitedGroupId');
           let shouldNavigateToProjects = false;
           
           if (lastVisitedGroupId) {
             try {
-              await supabaseService.getProjects(lastVisitedGroupId);
+              // Verify the group still exists and user is still a member
+              await supabaseService.getGroupDetails(lastVisitedGroupId);
               shouldNavigateToProjects = true;
             } catch (error) {
-              console.log('User no longer has access to last visited group, clearing it');
+              console.log('Group no longer exists or user lost access, clearing last visited group');
               await AsyncStorage.removeItem('lastVisitedGroupId');
             }
           }
@@ -184,10 +191,11 @@ export default function App() {
           
           if (lastVisitedGroupId) {
             try {
-              await supabaseService.getProjects(lastVisitedGroupId);
+              // Verify the group still exists and user is still a member
+              await supabaseService.getGroupDetails(lastVisitedGroupId);
               shouldNavigateToProjects = true;
             } catch (error) {
-              console.log('User no longer has access to last visited group, clearing it');
+              console.log('Group no longer exists or user lost access, clearing last visited group');
               await AsyncStorage.removeItem('lastVisitedGroupId');
             }
           }
@@ -346,6 +354,43 @@ export default function App() {
     }));
   };
 
+  const navigateToProfileWithContext = (fromScreen: Screen, groupId?: string) => {
+    setState(prev => ({
+      ...prev,
+      currentScreen: 'profile',
+      navigationContext: {
+        previousScreen: fromScreen,
+        selectedGroupId: groupId || prev.selectedGroupId,
+      }
+    }));
+  };
+
+  const navigateToSettingsWithContext = (fromScreen: Screen, groupId?: string) => {
+    setState(prev => ({
+      ...prev,
+      currentScreen: 'settings',
+      navigationContext: {
+        previousScreen: fromScreen,
+        selectedGroupId: groupId || prev.selectedGroupId,
+      }
+    }));
+  };
+
+  const navigateBackFromProfileSettings = () => {
+    const context = state.navigationContext;
+    if (context) {
+      setState(prev => ({
+        ...prev,
+        currentScreen: context.previousScreen,
+        selectedGroupId: context.selectedGroupId || null,
+        navigationContext: undefined,
+      }));
+    } else {
+      // Fallback to groups if no context
+      navigateToScreen('groups');
+    }
+  };
+
   if (state.isLoading) {
     return (
       <PaperProvider theme={theme}>
@@ -410,8 +455,8 @@ export default function App() {
           <ResearchGroupsScreen
             user={state.user}
             onLogout={handleLogout}
-            onNavigateToProfile={() => navigateToScreen('profile')}
-            onNavigateToSettings={() => navigateToScreen('settings')}
+            onNavigateToProfile={() => navigateToProfileWithContext('groups')}
+            onNavigateToSettings={() => navigateToSettingsWithContext('groups')}
             onNavigateToJoinGroup={() => navigateToScreen('join-group')}
             onNavigateToCreateGroup={() => navigateToScreen('create-group')}
             onNavigateToProjects={(groupId: string) => navigateToScreen('projects', groupId)}
@@ -422,14 +467,14 @@ export default function App() {
         return (
           <ProfileScreen
             user={state.user}
-            onNavigateBack={() => navigateToScreen('groups')}
+            onNavigateBack={navigateBackFromProfileSettings}
             onUserUpdate={handleUserUpdate}
           />
         );
       case 'settings':
         return (
           <SettingsScreen
-            onNavigateBack={() => navigateToScreen('groups')}
+            onNavigateBack={navigateBackFromProfileSettings}
           />
         );
       case 'join-group':
@@ -451,6 +496,10 @@ export default function App() {
           <ProjectsScreen
             groupId={state.selectedGroupId!}
             onNavigateBack={() => navigateToScreen('groups')}
+            user={state.user}
+            onNavigateToProfile={() => navigateToProfileWithContext('projects', state.selectedGroupId)}
+            onNavigateToSettings={() => navigateToSettingsWithContext('projects', state.selectedGroupId)}
+            onLogout={handleLogout}
           />
         );
       case 'group-settings':

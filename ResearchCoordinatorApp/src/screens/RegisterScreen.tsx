@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { TextInput, Button, Card, Title, Snackbar, ActivityIndicator, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import supabaseService from '../services/supabaseService';
@@ -68,6 +68,11 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
+          <Image 
+            source={require('../../assets/icon.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Title style={styles.headerTitle}>MacroScope</Title>
           <Text style={styles.headerSubtitle}>Join the research coordination platform</Text>
         </View>
@@ -83,8 +88,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
                 mode="outlined"
                 disabled={loading}
                 autoCapitalize="none"
-                autoComplete="username"
-                textContentType="username"
+                autoComplete="off"
+                textContentType="none"
                 autoCorrect={false}
                 outlineColor={colors.borderLight}
                 activeOutlineColor={colors.primary}
@@ -98,8 +103,8 @@ const RegisterScreen: React.FC<RegisterScreenProps> = ({ onRegisterSuccess, onNa
                 mode="outlined"
                 keyboardType="email-address"
                 autoCapitalize="none"
-                autoComplete="email"
-                textContentType="emailAddress"
+                autoComplete="off"
+                textContentType="none"
                 disabled={loading}
                 autoCorrect={false}
                 outlineColor={colors.borderLight}
@@ -193,6 +198,11 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: spacing.xl,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: spacing.md,
   },
   headerTitle: {
     fontSize: typography.fontSize.huge,

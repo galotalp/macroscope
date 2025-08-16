@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { TextInput, Button, Card, Title, Snackbar, ActivityIndicator, Text } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import supabaseService from '../services/supabaseService';
@@ -71,6 +71,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onNavigateToR
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
+          <Image 
+            source={require('../../assets/icon.png')} 
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Title style={styles.headerTitle}>MacroScope</Title>
           <Text style={styles.headerSubtitle}>See the big picture in research</Text>
         </View>
@@ -181,6 +186,11 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     marginBottom: spacing.xl,
+  },
+  logo: {
+    width: 80,
+    height: 80,
+    marginBottom: spacing.md,
   },
   headerTitle: {
     fontSize: typography.fontSize.huge,
